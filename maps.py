@@ -192,7 +192,7 @@ for mid, rec in maps.items():
     if kids:
         rec['kids'] = kids
 
-with open(os.path.join(DATA, 'maps.js'), 'w', encoding='utf-8') as f:
+with open(os.path.join(OUT, 'maps.js'), 'w', encoding='utf-8') as f:   # under site/maps so it is committed with the images
     f.write('window.FR_MAPS=' + json.dumps({'build': BUILD, 'maps': maps}, separators=(',', ':'), ensure_ascii=False) + ';\n')
 n = sum(1 for m in maps.values() if m.get('img'))
 print(f'Done: {len(maps)} maps, {n} with images, {sum(os.path.getsize(os.path.join(OUT, x)) for x in os.listdir(OUT)) // 1024} KB of jpg')
