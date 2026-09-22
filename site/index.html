@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forever Ref</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <a href="#/" class="brand">Forever<span>Ref</span></a>
+  <nav>
+    <a href="#/professions">Professions</a>
+    <a href="#/items">Items</a>
+    <a href="#/classes">Classes</a>
+    <a href="#/sets">Sets</a>
+    <a href="#/maps">Maps</a>
+    <a href="#/zones">Zones</a>
+    <a href="#/new" class="hl">What's new</a>
+    <a href="#/patches">Patches</a>
+  </nav>
+  <div class="search">
+    <input id="q" type="search" placeholder="Search items, spells, recipes…" autocomplete="off">
+    <div id="qres" hidden></div>
+  </div>
+</header>
+<main id="main"><p class="muted">Loading data…</p></main>
+<div id="tip" hidden></div>
+<script src="data/meta.js"></script>
+<script src="data/items.js"></script>
+<script src="data/spells.js"></script>
+<script src="data/profs.js"></script>
+<script src="data/classes.js"></script>
+<script src="data/sets.js"></script>
+<script src="data/zones.js"></script>
+<script src="data/patches.js"></script>
+<script src="data/maps.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
