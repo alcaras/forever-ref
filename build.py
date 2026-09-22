@@ -25,6 +25,20 @@ SNAPSHOT_ONLY = '--snapshot-only' in sys.argv
 UA = {'User-Agent': 'Mozilla/5.0 forever-ref/1.0'}
 
 
+def download(url, tries=5):
+    """GET with retries; wago.tools occasionally drops connections under a burst of requests."""
+    import time
+    for attempt in range(tries):
+        try:
+            return urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=180).read()
+        except Exception as e:
+            if attempt == tries - 1:
+                raise
+            wait = 3 * (attempt + 1)
+            print(f'    retry in {wait}s ({e})')
+            time.sleep(wait)
+
+
 def vtuple(v):
     return tuple(int(x) for x in v.split('.'))
 
@@ -49,20 +63,6 @@ os.makedirs(os.path.join(CACHE, BUILD), exist_ok=True)
 os.makedirs(ERA_CACHE, exist_ok=True)
 os.makedirs(DATA, exist_ok=True)
 os.makedirs(BUILDS, exist_ok=True)
-
-
-def download(url, tries=5):
-    """GET with retries; wago.tools occasionally drops connections under a burst of requests."""
-    import time
-    for attempt in range(tries):
-        try:
-            return urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=180).read()
-        except Exception as e:
-            if attempt == tries - 1:
-                raise
-            wait = 3 * (attempt + 1)
-            print(f'    retry in {wait}s ({e})')
-            time.sleep(wait)
 
 
 def fetch(table, build=None, folder=None, need=()):
