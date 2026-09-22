@@ -30,7 +30,7 @@ def vtuple(v):
 
 
 def latest_build():
-    data = json.loads(urllib.request.urlopen(urllib.request.Request('https://wago.tools/api/builds', headers=UA), timeout=60).read())
+    data = json.loads(download('https://wago.tools/api/builds'))
     forever = [b['version'] for b in data.get(PRODUCT, []) if b['version'].startswith('1.') and vtuple(b['version']) >= (1, 60)]
     if not forever:
         raise SystemExit('no Forever build found on wago.tools')
@@ -51,6 +51,20 @@ os.makedirs(DATA, exist_ok=True)
 os.makedirs(BUILDS, exist_ok=True)
 
 
+def download(url, tries=5):
+    """GET with retries; wago.tools occasionally drops connections under a burst of requests."""
+    import time
+    for attempt in range(tries):
+        try:
+            return urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=180).read()
+        except Exception as e:
+            if attempt == tries - 1:
+                raise
+            wait = 3 * (attempt + 1)
+            print(f'    retry in {wait}s ({e})')
+            time.sleep(wait)
+
+
 def fetch(table, build=None, folder=None, need=()):
     build = build or BUILD
     folder = folder or os.path.join(CACHE, build)
@@ -58,7 +72,7 @@ def fetch(table, build=None, folder=None, need=()):
     if REFRESH or not os.path.exists(path) or os.path.getsize(path) == 0:
         url = f'https://wago.tools/db2/{table}/csv?build={build}'
         print('  download', table, build)
-        data = urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=180).read()
+        data = download(url)
         if data.startswith(b'{"errors"') or data.startswith(b'{"message"'):
             raise SystemExit(f'{table} not available for build {build}: {data[:120]!r}')
         with open(path, 'wb') as f:

@@ -96,6 +96,9 @@ h4 { margin: 12px 0 4px; font-size: 13px; color: var(--muted); text-transform: u
 .maprect { position: absolute; border: 1px solid rgba(255, 209, 0, .35); border-radius: 3px; color: #fff; font-size: 11px; text-shadow: 0 0 3px #000, 0 0 3px #000; display: flex; align-items: center; justify-content: center; text-align: center; }
 .maprect:hover { background: rgba(255, 209, 0, .18); border-color: var(--gold); text-decoration: none; }
 .maprect span { padding: 2px; }
+.maprect.area { border-color: transparent; }
+.maprect.area span { opacity: 0; }
+.maprect.area:hover span { opacity: 1; }
 .zones ul { columns: 3; list-style: none; padding: 0; margin: 0; }
 .zones ul ul { columns: 1; padding-left: 14px; }
 .zones li { break-inside: avoid; padding: 2px 0; }

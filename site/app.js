@@ -617,8 +617,12 @@ function mapImage(id, opts) {
   if (!m || !m.img) return '';
   opts = opts || {};
   const kids = (m.kids || []).filter(k => MAPS[k[0]]);
+  const pos = k => `left:${(k[1] * 100).toFixed(2)}%;top:${(k[2] * 100).toFixed(2)}%;width:${((k[3] - k[1]) * 100).toFixed(2)}%;height:${((k[4] - k[2]) * 100).toFixed(2)}%`;
+  const areaName = id => { const z = ZONES.zones.find(x => x.id === id); return z ? z.n : '#' + id; };
+  const areas = kids.length ? [] : (m.areas || []);
   return `<div class="mapwrap" style="max-width:${m.w}px"><img src="maps/${id}.jpg" width="${m.w}" height="${m.h}" alt="${esc(m.n)}">
-    ${kids.map(k => `<a class="maprect" href="#/map/${k[0]}" title="${esc(MAPS[k[0]].n)}" style="left:${(k[1] * 100).toFixed(2)}%;top:${(k[2] * 100).toFixed(2)}%;width:${((k[3] - k[1]) * 100).toFixed(2)}%;height:${((k[4] - k[2]) * 100).toFixed(2)}%"><span>${esc(MAPS[k[0]].n)}</span></a>`).join('')}</div>`;
+    ${kids.map(k => `<a class="maprect" href="#/map/${k[0]}" title="${esc(MAPS[k[0]].n)}" style="${pos(k)}"><span>${esc(MAPS[k[0]].n)}</span></a>`).join('')}
+    ${areas.map(a => `<a class="maprect area" href="#/zone/${a[0]}" title="${esc(areaName(a[0]))}" style="${pos(a)}"><span>${esc(areaName(a[0]))}</span></a>`).join('')}</div>`;
 }
 function pageMaps() {
   const roots = Object.keys(MAPS).filter(id => !MAPS[id].p).map(Number);

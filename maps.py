@@ -19,6 +19,7 @@ if '--build' in sys.argv:
 elif os.path.exists(os.path.join(ROOT, 'builds', 'LATEST')):
     BUILD = open(os.path.join(ROOT, 'builds', 'LATEST')).read().strip()
 REFRESH = '--refresh' in sys.argv
+ONLY = int(sys.argv[sys.argv.index('--only') + 1]) if '--only' in sys.argv else None
 CACHE = os.path.join(ROOT, 'cache', BUILD)
 TILES = os.path.join(ROOT, 'cache', 'tiles')
 OUT = os.path.join(ROOT, 'site', 'maps')
@@ -27,9 +28,17 @@ for d in (CACHE, TILES, OUT, DATA):
     os.makedirs(d, exist_ok=True)
 
 
-def get(url, path):
+def get(url, path, tries=5):
     if not os.path.exists(path) or os.path.getsize(path) == 0:
-        data = urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=120).read()
+        import time
+        for attempt in range(tries):
+            try:
+                data = urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=120).read()
+                break
+            except Exception as e:
+                if attempt == tries - 1:
+                    raise
+                time.sleep(3 * (attempt + 1))
         with open(path, 'wb') as f:
             f.write(data)
     return open(path, 'rb').read()
@@ -71,6 +80,40 @@ tiles = {}
 for r in table('UiMapArtTile'):
     if I(r['LayerIndex']) == 0:
         tiles.setdefault(I(r['UiMapArtID']), []).append((I(r['RowIndex']), I(r['ColIndex']), I(r['FileDataID'])))
+overlays = {}
+for r in table('WorldMapOverlay'):
+    overlays.setdefault(I(r['UiMapArtID']), []).append(r)
+overlay_tiles = {}
+for r in table('WorldMapOverlayTile'):
+    if I(r['LayerIndex']) == 0:
+        overlay_tiles.setdefault(I(r['WorldMapOverlayID']), []).append((I(r['RowIndex']), I(r['ColIndex']), I(r['FileDataID'])))
+
+
+def load_tile(fdid):
+    blp = get(f'https://wago.tools/api/casc/{fdid}?version={BUILD}', os.path.join(TILES, f'{fdid}.blp'))
+    return Image.open(io.BytesIO(blp)).convert('RGBA')
+
+
+def stitch(tile_list):
+    """Place tiles by their own decoded sizes (overlay tiles are power-of-two chunks of varying size)."""
+    grid = {}
+    for row, col, fdid in tile_list:
+        try:
+            grid[(row, col)] = load_tile(fdid)
+        except Exception as e:
+            print('  tile decode failed', fdid, e)
+    if not grid:
+        return None
+    rows = max(r for r, _ in grid) + 1
+    cols = max(c for _, c in grid) + 1
+    col_w = [max((grid[(r, c)].width for r in range(rows) if (r, c) in grid), default=0) for c in range(cols)]
+    row_h = [max((grid[(r, c)].height for c in range(cols) if (r, c) in grid), default=0) for r in range(rows)]
+    canvas = Image.new('RGBA', (sum(col_w), sum(row_h)), (0, 0, 0, 0))
+    for (r, c), img in grid.items():
+        canvas.paste(img, (sum(col_w[:c]), sum(row_h[:r])), img)
+    return canvas
+
+
 assign = {}
 for r in table('UiMapAssignment'):
     m = I(r['UiMapID'])
@@ -79,6 +122,8 @@ for r in table('UiMapAssignment'):
 
 maps = {}
 for mid, r in sorted(uimaps.items()):
+    if ONLY and mid != ONLY:
+        continue
     rec = {'n': r['Name_lang'], 'p': I(r['ParentUiMapID']), 't': I(r['Type'])}
     a = assign.get(mid)
     if a:
@@ -89,22 +134,35 @@ for mid, r in sorted(uimaps.items()):
         lay = layers[(style_of[art], 0)]
         W, H, tw, th = I(lay['LayerWidth']), I(lay['LayerHeight']), I(lay['TileWidth']), I(lay['TileHeight'])
         out = os.path.join(OUT, f'{mid}.jpg')
+        ovs = overlays.get(art, [])
         if REFRESH or not os.path.exists(out):
-            rows = max(t[0] for t in tiles[art]) + 1
-            cols = max(t[1] for t in tiles[art]) + 1
-            canvas = Image.new('RGB', (cols * tw, rows * th))
-            for row, col, fdid in tiles[art]:
-                blp = get(f'https://wago.tools/api/casc/{fdid}?version={BUILD}', os.path.join(TILES, f'{fdid}.blp'))
-                try:
-                    img = Image.open(io.BytesIO(blp)).convert('RGB')
-                except Exception as e:
-                    print('  tile decode failed', mid, fdid, e)
+            canvas = stitch(tiles[art])
+            if canvas is None:
+                continue
+            canvas = canvas.crop((0, 0, W, H))
+            n_ov = 0
+            for ov in ovs:   # "explored" subzone art, drawn over the parchment base
+                ot = overlay_tiles.get(I(ov['ID']))
+                if not ot:
                     continue
-                canvas.paste(img.resize((tw, th)) if img.size != (tw, th) else img, (col * tw, row * th))
-            canvas.crop((0, 0, W, H)).save(out, 'JPEG', quality=85, optimize=True)
-            print(f'  {mid:5d} {r["Name_lang"]:28s} {W}x{H} from {len(tiles[art])} tiles')
+                img = stitch(ot)
+                if img is None:
+                    continue
+                img = img.crop((0, 0, I(ov['TextureWidth']), I(ov['TextureHeight'])))
+                canvas.paste(img, (I(ov['OffsetX']), I(ov['OffsetY'])), img)
+                n_ov += 1
+            canvas.convert('RGB').save(out, 'JPEG', quality=85, optimize=True)
+            print(f'  {mid:5d} {r["Name_lang"]:28s} {W}x{H} from {len(tiles[art])} tiles + {n_ov} overlays')
         rec['img'] = 1
         rec['w'], rec['h'] = W, H
+        areas = []
+        for ov in ovs:
+            aid = I(ov['AreaID_0'])
+            l, t, rr, b = I(ov['HitRectLeft']), I(ov['HitRectTop']), I(ov['HitRectRight']), I(ov['HitRectBottom'])
+            if aid and rr > l and b > t:
+                areas.append([aid, round(l / W, 4), round(t / H, 4), round(rr / W, 4), round(b / H, 4)])
+        if areas:
+            rec['areas'] = areas
     maps[mid] = rec
 
 
