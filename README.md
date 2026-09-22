@@ -15,12 +15,24 @@ A static reference site for WoW Forever built purely from the game client's data
    and from any static host such as GitHub Pages.
 
 ```bash
-python build.py          # rebuild site/data from cached CSVs
-python validate.py       # compare a sample of items against Wowhead Forever tooltips
-python -m http.server 8765 --directory site
+python build.py            # rebuild site/data for the pinned build (cached CSVs)
+python build.py --latest   # newest Forever build listed by wago.tools
+python maps.py             # stitch world map images into site/maps/ (needs Pillow)
+python validate.py         # compare a sample of items against Wowhead Forever tooltips
+python -m http.server 8766 --directory site
 ```
 
-To bump the build, change `BUILD` in `build.py` (the wago.tools build list is at
+Every build writes `builds/<build>.json.gz`, a snapshot of the comparable data. Consecutive
+snapshots are diffed into the **Patches** page, so each new beta build shows what changed in
+items, spells and recipes. `builds/` is committed; `cache/` and `site/data/` are not.
+
+## GitHub Pages
+
+`.github/workflows/pages.yml` runs on push, daily, and on demand: it builds the latest Forever
+build, commits any new snapshot to `builds/`, and deploys `site/` to GitHub Pages. Map images are
+committed under `site/maps/` because they rarely change; re-run `maps.py` when they do.
+
+To pin a build instead, change `DEFAULT_BUILD` in `build.py` (the wago.tools build list is at
 `https://wago.tools/api/builds`, product `wow_classic_beta`). Column checks in `fetch()` fail
 loudly when a table layout changes.
 
