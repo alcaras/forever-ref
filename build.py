@@ -907,8 +907,14 @@ snapshot = {
                 for p in prof_out for s in p['recipes']},
 }
 snap_path = os.path.join(BUILDS, BUILD + '.json.gz')
-with gzip.open(snap_path, 'wt', encoding='utf-8') as f:
-    json.dump(snapshot, f, separators=(',', ':'), ensure_ascii=False)
+same = False
+if os.path.exists(snap_path):   # keep the file byte-identical when the data has not changed (CI commits it)
+    with gzip.open(snap_path, 'rt', encoding='utf-8') as f:
+        old = json.load(f)
+    same = all(old.get(k) == json.loads(json.dumps(snapshot[k])) for k in ('items', 'spells', 'recipes'))
+if not same:
+    with gzip.open(snap_path, 'wt', encoding='utf-8') as f:
+        json.dump(snapshot, f, separators=(',', ':'), ensure_ascii=False)
 with open(os.path.join(BUILDS, 'LATEST'), 'w') as f:
     f.write(BUILD + '\n')
 print('  wrote snapshot builds/%s.json.gz (%d KB)' % (BUILD, os.path.getsize(snap_path) // 1024))
