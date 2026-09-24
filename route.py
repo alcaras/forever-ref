@@ -287,7 +287,7 @@ def build_pool(packages):
             and q['zone'] not in {p['zone'] for p in packages} and not q.get('maxlv')]
 
 
-def pick_quest(sim, pool, prereq_deadline, relax=False):
+def pick_quest(sim, pool, prereq_deadline, relax=False, zone_only=False):
     """Do the best available quest (XP per estimated minute, deadline and locality weighted). Returns False if none."""
     best, best_score = None, 0
     for qid in pool:
@@ -297,6 +297,7 @@ def pick_quest(sim, pool, prereq_deadline, relax=False):
         if xp <= 0: continue
         if not relax and (q.get('lv') or 0) > sim.level + 4: continue
         sp, ep = quest_start_pos(q), quest_end_pos(q)
+        if zone_only and not (sp and sim.pos and sp[0] == sim.pos[0]): continue
         cost = travel(sim.pos, sp, sim.level) + travel(sp, ep, sim.level) + 60.0
         for k, lst in (q.get('objs') or {}).items():
             cost += OBJECTIVE_TIME.get(k, 120.0) * (len(lst) if isinstance(lst, list) else 1)
@@ -310,7 +311,7 @@ def pick_quest(sim, pool, prereq_deadline, relax=False):
         if (q.get('lv') or 0) > sim.level + 3: score *= 0.5
         if score > best_score: best, best_score = qid, score
     if not best:
-        return False if relax else pick_quest(sim, pool, prereq_deadline, relax=True)
+        return False if relax else pick_quest(sim, pool, prereq_deadline, relax=True, zone_only=zone_only)
     q = Q[best]
     sp, ep = quest_start_pos(q), quest_end_pos(q)
     sim.steps.append({'t': 'accept', 'q': best, 'lv': sim.level, 'pos': sp})
@@ -325,7 +326,7 @@ def pick_quest(sim, pool, prereq_deadline, relax=False):
 def fill_to(sim, target, pool, prereq_deadline, why):
     """Instead of grinding: quest until the level is reached (or nothing is available)."""
     n = 0
-    while sim.level < target and pick_quest(sim, pool, prereq_deadline):
+    while sim.level < target and sim.pos and pick_quest(sim, pool, prereq_deadline, zone_only=True):   # only quests where we already are
         n += 1
     if sim.level < target:
         sim.steps.append({'t': 'note', 'msg': '%s: level %d wanted, %d reached with no quest left; kills will have to cover it' % (why, target, sim.level)})
