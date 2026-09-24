@@ -254,13 +254,16 @@ document.addEventListener('click', e => {
     render();
     return;
   }
+  const sc = e.target.closest('a[data-scroll]');
+  if (sc) { e.preventDefault(); const el = document.getElementById(sc.dataset.scroll); if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'}); return; }
   const more = e.target.closest('a[data-more]');
   if (more) { e.preventDefault(); LIMITS[more.dataset.more] = 1e9; render(); }
 });
 const LIMITS = {};
 
 /* ---------------------------------------------------------------- pages */
-const STATE = {items: {q: '', c: '', sc: '', qmin: '', lmin: '', lmax: '', flag: ''}, prof: {q: '', skill: '', flag: '', hideGrey: false}, cls: {id: 0}};
+const STATE = {items: {q: '', c: '', sc: '', qmin: '', lmin: '', lmax: '', flag: ''}, prof: {q: '', skill: '', flag: '', hideGrey: false, view: 'recipes', bop: true, slot: '', lmax: ''}, cls: {id: 0},
+  bop: {q: '', lmax: '', equipOnly: true, newOnly: false}};
 
 function pageHome() {
   const c = M.counts;
@@ -268,6 +271,7 @@ function pageHome() {
   <p>Client data from build <b>${M.build}</b>, decoded via wago.tools, compared against Classic Era <b>${M.eraBuild}</b>. Generated ${M.generated}.</p>
   <div class="tiles">
     <a class="tile" href="#/professions"><div><b>Professions</b><div class="sub">${c.recipes} recipes, ${c.newRecipes} new in Forever</div></div></a>
+    <a class="tile" href="#/bop"><div><b>BoP crafts</b><div class="sub">Profession-only gear, grouped by set</div></div></a>
     <a class="tile" href="#/items"><div><b>Items</b><div class="sub">${c.items} items, ${c.newItems} new, ${c.modItems} changed</div></div></a>
     <a class="tile" href="#/classes"><div><b>Class abilities</b><div class="sub">${c.spells} spells, ${c.newSpells} new</div></div></a>
     <a class="tile" href="#/sets"><div><b>Item sets</b><div class="sub">${c.sets} sets</div></div></a>
@@ -301,12 +305,122 @@ function recipeSource(s) {
   if (s.sk.acq === 1) return '<span class="muted">Learned with profession</span>';
   return '<span class="muted" title="Trainer lists and quest rewards are server-side and not in the client data">Trainer / quest</span>';
 }
+/* Gear view: crafted equippable items grouped by the shared part of their names ("Azure Gustwoven", "Lionheart"). */
+const SLOT_WORDS = new Set(['belt', 'boots', 'bracers', 'bracer', 'gloves', 'gauntlets', 'helm', 'helmet', 'leggings', 'legguards', 'legplates', 'pants', 'kilt', 'trousers',
+  'chestpiece', 'chestguard', 'chestplate', 'breastplate', 'tunic', 'vest', 'robe', 'robes', 'jerkin', 'hauberk', 'armor', 'cloak', 'cape', 'drape', 'shoulders', 'shoulderpads',
+  'pauldrons', 'spaulders', 'mantle', 'epaulets', 'cowl', 'hood', 'cap', 'hat', 'crown', 'headband', 'circlet', 'mask', 'sabatons', 'greaves', 'treads', 'slippers', 'sandals',
+  'handguards', 'handwraps', 'wristguards', 'wristbands', 'cuffs', 'cord', 'sash', 'girdle', 'waistband', 'waistguard', 'ring', 'band', 'amulet', 'necklace', 'choker',
+  'pendant', 'shield', 'buckler', 'bulwark', 'dagger', 'sword', 'axe', 'mace', 'hammer', 'staff', 'blade', 'gun', 'rifle', 'bow', 'crossbow', 'wand', 'goggles', 'spectacles',
+  'boots', 'footguards', 'footwraps', 'moccasins', 'leggings', 'shoulderguards', 'armguards', 'bindings', 'vambraces', 'gloves', 'grips', 'mitts', 'mittens', 'coif', 'skullcap']);
+function gearGroup(name) {
+  const words = name.replace(/^(pattern|plans|recipe|schematic|formula):\s*/i, '').split(/\s+/);
+  if (words.length < 2) return 'Other';
+  const last = words[words.length - 1].toLowerCase().replace(/[^a-z']/g, '');
+  const prefix = words.slice(0, -1).join(' ');
+  if (SLOT_WORDS.has(last)) return prefix;
+  if (words.length >= 3 && SLOT_WORDS.has(words[words.length - 2].toLowerCase())) return words.slice(0, -2).join(' ');
+  return prefix;
+}
+function craftedRows(p, o) {
+  /* o: {bop, equipOnly, slot, lmax, flag, q} */
+  const rows = [];
+  const q = (o.q || '').toLowerCase();
+  p.recipes.forEach(sid => {
+    const s = SPELLS[sid];
+    if (!s.cr) return;
+    const it = ITEMS[s.cr[0]];
+    if (!it) return;
+    const equip = it.it && it.it !== 18 && it.it !== 24 && it.it !== 27;   // not bags, ammo, quivers
+    if (o.equipOnly && !equip) return;
+    if (o.bop && it.b !== 1) return;
+    if (o.slot && String(it.it) !== o.slot) return;
+    if (o.lmax !== '' && o.lmax != null && (it.rl || 0) > +o.lmax) return;
+    if (o.flag === 'new' && !s.sk.new && !it.new) return;
+    if (o.flag === 'chg' && !s.sk.chg && !it.mod) return;
+    if (q && !it.n.toLowerCase().includes(q)) return;
+    rows.push({sid, s, it, p, g: equip ? gearGroup(it.n) : 'Non-equippable'});
+  });
+  return rows;
+}
+const GEAR_COLS = [
+  {h: 'Item', r: r => itemLink(r.s.cr[0], {badges: true})},
+  {h: 'Slot', r: r => M.invTypes[r.it.it] || ''},
+  {h: 'Type', r: r => esc(subName(r.it.c, r.it.sc))},
+  {h: 'Req', r: r => r.it.rl || '', num: true},
+  {h: 'iLvl', r: r => r.it.il, num: true},
+  {h: 'Quality', r: r => `<span class="q${r.it.q}">${QNAME[r.it.q]}</span>`},
+  {h: 'Binds', r: r => r.it.b === 1 ? '<b>BoP</b>' : r.it.b === 2 ? 'BoE' : r.it.b === 3 ? 'BoU' : ''},
+  {h: 'Recipe', r: r => spellLink(r.sid, {noicon: true}) + ' <span class="muted small">' + skillCell(r.s.sk) + '</span>'},
+  {h: 'Source', r: r => recipeSource(r.s)},
+];
+function gearTable(rows, opts) {
+  opts = opts || {};
+  const groups = new Map();
+  rows.forEach(r => { if (!groups.has(r.g)) groups.set(r.g, []); groups.get(r.g).push(r); });
+  const minLv = k => Math.min(...groups.get(k).map(r => r.it.rl || 0));
+  const keys = [...groups.keys()].sort((a, b) => (a === 'Non-equippable') - (b === 'Non-equippable') || minLv(a) - minLv(b) || a.localeCompare(b));
+  let h = (opts.head ? '<thead><tr>' + GEAR_COLS.map(c => `<th>${c.h}</th>`).join('') + '</tr></thead>' : '') + '<tbody>';
+  keys.forEach(k => {
+    const g = groups.get(k).sort((a, b) => (a.it.rl || 0) - (b.it.rl || 0) || a.it.it - b.it.it || a.it.n.localeCompare(b.it.n));
+    const lv = g.map(r => r.it.rl || 0), lo = Math.min(...lv), hi = Math.max(...lv);
+    const bop = g.filter(r => r.it.b === 1).length;
+    h += `<tr class="cat"><td colspan="${GEAR_COLS.length}">${esc(k)} <span class="muted small">(${g.length} item${g.length > 1 ? 's' : ''}, level ${lo === hi ? lo : lo + '–' + hi}${bop && bop !== g.length ? `, ${bop} BoP` : ''})</span></td></tr>`;
+    h += g.map(r => `<tr>${GEAR_COLS.map(c => `<td class="${c.num ? 'num' : ''}">${c.r(r)}</td>`).join('')}</tr>`).join('');
+  });
+  return h + '</tbody>';
+}
+function gearView(p) {
+  const st = STATE.prof;
+  const rows = craftedRows(p, {bop: st.bop, equipOnly: true, slot: st.slot, lmax: st.lmax, flag: st.flag, q: st.q});
+  const slots = [...new Set(craftedRows(p, {equipOnly: true}).map(r => r.it.it))].sort((a, b) => a - b);
+  const groups = new Set(rows.map(r => r.g)).size;
+  return `<div class="filters">
+    <input id="pf-q" placeholder="Filter items" value="${esc(st.q)}">
+    <label><input id="pf-bop" type="checkbox" ${st.bop ? 'checked' : ''}> BoP only</label>
+    <select id="pf-slot"><option value="">Any slot</option>${slots.map(s => `<option value="${s}" ${st.slot === String(s) ? 'selected' : ''}>${M.invTypes[s]}</option>`).join('')}</select>
+    <label>Req level ≤ <input id="pf-lmax" type="number" min="1" max="60" style="width:60px" value="${esc(st.lmax)}"></label>
+    <select id="pf-flag"><option value="">All</option><option value="new" ${st.flag === 'new' ? 'selected' : ''}>New in Forever</option><option value="chg" ${st.flag === 'chg' ? 'selected' : ''}>Changed vs Classic Era</option></select>
+    <span class="muted small">${rows.length} items in ${groups} groups</span></div>
+    <table>${gearTable(rows, {head: true})}</table>`;
+}
+function pageBop() {
+  const st = STATE.bop;
+  let h = `<h1>BoP crafts by profession</h1>
+  <p class="muted">Everything a profession can craft that binds when picked up: gear you can only get by having the profession yourself. Grouped by the shared part of the item names, sorted by required level.</p>
+  <div class="filters">
+    <input id="bp-q" placeholder="Filter items" value="${esc(st.q)}">
+    <label>Req level ≤ <input id="bp-lmax" type="number" min="1" max="60" style="width:60px" value="${esc(st.lmax)}"></label>
+    <label><input id="bp-equip" type="checkbox" ${st.equipOnly ? 'checked' : ''}> equippable only</label>
+    <label><input id="bp-new" type="checkbox" ${st.newOnly ? 'checked' : ''}> new in Forever only</label>
+  </div>`;
+  const sections = PROFS.map(p => ({p, rows: craftedRows(p, {bop: true, equipOnly: st.equipOnly, lmax: st.lmax, flag: st.newOnly ? 'new' : '', q: st.q})})).filter(x => x.rows.length);
+  h += `<div class="tabs">${sections.map(x => `<a href="#/bop" data-scroll="bop-${x.p.id}">${esc(x.p.n)} <span class="muted small">${x.rows.length}</span></a>`).join('')}</div>`;
+  sections.forEach(x => {
+    h += `<h2 id="bop-${x.p.id}">${icon(x.p.ic)}<a href="#/profession/${x.p.id}?view=gear">${esc(x.p.n)}</a> <span class="muted small">${x.rows.length} BoP items</span></h2><table>${gearTable(x.rows, {head: true})}</table>`;
+  });
+  if (!sections.length) h += '<p class="muted">Nothing matches.</p>';
+  return h;
+}
+function bindBop() {
+  const st = STATE.bop;
+  const q = $('#bp-q'); if (!q) return;
+  q.addEventListener('input', () => { st.q = q.value; rerenderKeepFocus('#bp-q'); });
+  $('#bp-lmax').addEventListener('input', e => { st.lmax = e.target.value; rerenderKeepFocus('#bp-lmax'); });
+  $('#bp-equip').addEventListener('change', e => { st.equipOnly = e.target.checked; render(); });
+  $('#bp-new').addEventListener('change', e => { st.newOnly = e.target.checked; render(); });
+}
+
 function pageProfession(id, params) {
   const p = PROFS.find(x => x.id === +id);
   if (!p) return '<h1>Unknown profession</h1>';
   const st = STATE.prof;
   if (params.new) st.flag = 'new';
+  if (params.view) st.view = params.view;
   const mine = +st.skill || 0;
+  const head = `<h1>${icon(p.ic, 'large')}${esc(p.n)}</h1>
+  <div class="tabs"><a href="#/profession/${p.id}?view=recipes" class="${st.view !== 'gear' ? 'on' : ''}">Recipes</a><a href="#/profession/${p.id}?view=gear" class="${st.view === 'gear' ? 'on' : ''}">Gear</a>
+  <a class="ext" href="${WH}skills/${p.n.toLowerCase().replace(/ /g, '-')}" target="_blank" style="border:0;background:none">Wowhead Forever ↗</a></div>`;
+  if (st.view === 'gear') return head + gearView(p);
   const catPath = c => { const path = []; let guard = 0; while (c && p.cats[c] && guard++ < 6) { path.unshift(p.cats[c]); c = p.cats[c].p; } return path; };
   const rows = p.recipes.map(s => ({id: s, s: SPELLS[s]})).filter(r => {
     if (st.q && !r.s.n.toLowerCase().includes(st.q.toLowerCase()) && !(r.s.cr && ITEMS[r.s.cr[0]] && ITEMS[r.s.cr[0]].n.toLowerCase().includes(st.q.toLowerCase()))) return false;
@@ -331,14 +445,12 @@ function pageProfession(id, params) {
     {h: 'Skill', r: r => skillCell(r.s.sk, mine), s: r => r.s.sk.min, num: true},
     {h: 'Source', r: r => recipeSource(r.s)},
   ];
-  let h = `<h1>${icon(p.ic, 'large')}${esc(p.n)}</h1>
-  <div class="filters">
+  let h = head + `<div class="filters">
     <input id="pf-q" placeholder="Filter recipes" value="${esc(st.q)}">
     <label>My skill <input id="pf-skill" type="number" min="0" max="450" style="width:70px" value="${esc(st.skill)}"></label>
     <label><input id="pf-grey" type="checkbox" ${st.hideGrey ? 'checked' : ''}> hide grey</label>
     <select id="pf-flag"><option value="">All recipes</option><option value="new" ${st.flag === 'new' ? 'selected' : ''}>New in Forever</option><option value="chg" ${st.flag === 'chg' ? 'selected' : ''}>Changed vs Classic Era</option></select>
     <span class="muted small">${recipes.length} recipes</span>
-    <a class="ext" href="${WH}skills/${p.n.toLowerCase().replace(/ /g, '-')}" target="_blank">Wowhead Forever ↗</a>
   </div>`;
   const keys = [...groups.keys()].sort((a, b) => groups.get(a).ord.localeCompare(groups.get(b).ord));
   h += '<table><thead><tr>' + cols.map(c => `<th>${c.h}</th>`).join('') + '</tr></thead><tbody>';
@@ -355,10 +467,14 @@ function pageProfession(id, params) {
 function bindProfession() {
   const st = STATE.prof;
   const q = $('#pf-q'); if (!q) return;
+  const on = (sel, ev, fn) => { const el = $(sel); if (el) el.addEventListener(ev, fn); };
   q.addEventListener('input', () => { st.q = q.value; rerenderKeepFocus('#pf-q'); });
-  $('#pf-skill').addEventListener('input', e => { st.skill = e.target.value; rerenderKeepFocus('#pf-skill'); });
-  $('#pf-grey').addEventListener('change', e => { st.hideGrey = e.target.checked; render(); });
-  $('#pf-flag').addEventListener('change', e => { st.flag = e.target.value; render(); });
+  on('#pf-skill', 'input', e => { st.skill = e.target.value; rerenderKeepFocus('#pf-skill'); });
+  on('#pf-grey', 'change', e => { st.hideGrey = e.target.checked; render(); });
+  on('#pf-flag', 'change', e => { st.flag = e.target.value; render(); });
+  on('#pf-bop', 'change', e => { st.bop = e.target.checked; render(); });
+  on('#pf-slot', 'change', e => { st.slot = e.target.value; render(); });
+  on('#pf-lmax', 'input', e => { st.lmax = e.target.value; rerenderKeepFocus('#pf-lmax'); });
 }
 function rerenderKeepFocus(sel) {
   const el = $(sel), pos = el && el.selectionStart;
@@ -707,7 +823,7 @@ function render() {
   const [p, id] = parts;
   const path = parts.join('/');
   if (p === 'items' && params.flag && path !== lastPath) { STATE.items = {q: '', c: '', sc: '', qmin: '', lmin: '', lmax: '', flag: params.flag}; }
-  if (p === 'profession' && path !== lastPath) { STATE.prof = {q: '', skill: STATE.prof.skill, flag: params.new ? 'new' : '', hideGrey: false}; }
+  if (p === 'profession' && path !== lastPath) { STATE.prof = {q: '', skill: STATE.prof.skill, flag: params.new ? 'new' : '', hideGrey: false, view: params.view || STATE.prof.view || 'recipes', bop: true, slot: '', lmax: ''}; }
   let html;
   switch (p) {
     case undefined: html = pageHome(); break;
@@ -726,6 +842,7 @@ function render() {
     case 'new': html = pageNew(); break;
     case 'search': html = pageSearch(params); break;
     case 'patches': html = pagePatches(params); break;
+    case 'bop': html = pageBop(); break;
     case 'maps': html = pageMaps(); break;
     case 'map': html = pageMap(id); break;
     default: html = '<h1>Not found</h1>';
@@ -734,6 +851,7 @@ function render() {
   if (p === 'profession') bindProfession();
   if (p === 'items') bindItems();
   if (p === 'class') bindClass();
+  if (p === 'bop') bindBop();
   if (path !== lastPath) { window.scrollTo(0, 0); lastPath = path; }
   $('#tip').hidden = true;
   const h1 = $('#main h1');
