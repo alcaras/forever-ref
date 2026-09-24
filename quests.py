@@ -35,6 +35,23 @@ info = json.load(open(info_path, encoding='utf-8')) if os.path.exists(info_path)
 desc_path = os.path.join(ROOT, 'cache', 'wowhead', 'quest-desc.json')   # description text, only for quests with no recorded starter
 descs = json.load(open(desc_path, encoding='utf-8')) if os.path.exists(desc_path) else {}
 
+# Wowhead has no faction flag (side 0) on these; inferred from the quest giver / turn-in NPC. 1 Alliance, 2 Horde, 3 both.
+SIDE_OVERRIDES = {
+    95204: 2,   # Crest of Lordaeron -> Oran Snakewrithe (Undercity)
+    92422: 2,   # The Wrath of Rath'mael -> Deathguard Kristof (Undercity)
+    4003: 2,    # The Royal Rescue: Thrall
+    4004: 2,    # The Princess Saved?: Thrall
+    96393: 1,   # Old Ironforge Incursion -> King Magni Bronzebeard
+    1500: 3,    # Waking Naralex (Naralex's Disciple, neutral)
+    999: 3,     # When Dreams Turn to Nightmares
+    3911: 3,    # The Last Element
+    7462: 3,    # The Treasure of the Shen'dralar
+    7703: 3,    # Unfinished Gordok Business: Captain Kromcrush
+    7487: 3,    # Attunement to the Core
+    85558: 3,   # Commit to Quality: Master Elemental Shaper Krixix
+    85557: 3,   # Efficiency Is Priority One: Krixix
+}
+
 dungeons = []
 used_factions = set()
 for z in ORDER:
@@ -48,6 +65,9 @@ for z in ORDER:
             continue
         rec = {'id': q['id'], 'n': q['name'], 'lv': q.get('level') or 0, 'rl': q.get('reqlevel') or 0, 'side': q.get('side') or 0,
                'xp': q.get('xp') or 0, 'type': q.get('type') or 0}
+        if not rec['side'] and q['id'] in SIDE_OVERRIDES:
+            rec['side'] = SIDE_OVERRIDES[q['id']]
+            rec['inf'] = 1
         if q.get('money'):
             rec['money'] = q['money']
         if q.get('itemrewards'):
