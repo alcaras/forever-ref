@@ -293,10 +293,11 @@ function pageProfessions() {
   return `<h1>Professions</h1><h2>Primary</h2><div class="tiles">${kind('primary')}</div><h2>Secondary</h2><div class="tiles">${kind('secondary')}</div><h2>Other</h2><div class="tiles">${kind('other')}</div>`;
 }
 
-function skillCell(sk, mine) {
+function skillCell(sk, mine, s) {
   if (!sk.lo && !sk.hi) return sk.req ? `<span class="sk-o"><b>${sk.req}</b></span>` : '<span class="muted">–</span>';
   const mid = Math.floor((sk.lo + sk.hi) / 2);
-  const req = sk.req || 0;
+  const tr = !sk.req && s ? trainerReq(s) : null;
+  const req = sk.req || (tr && tr.rank) || 0;
   const cls = mine ? ((req && mine < req) ? 'sk-x' : mine < sk.lo ? 'sk-o' : mine < mid ? 'sk-y' : mine < sk.hi ? 'sk-g' : 'sk-x') : 'sk-o';
   const reqTxt = req ? `<b>${req}</b>` : `<span title="Learn-at skill is not in the client data for trainer-taught recipes">?</span>`;
   return `<span class="${cls}">${reqTxt}</span> <span class="muted small"><span class="sk-y">${sk.lo}</span> / <span class="sk-g">${mid}</span> / <span class="sk-x">${sk.hi}</span></span>`;
@@ -304,6 +305,8 @@ function skillCell(sk, mine) {
 function recipeSource(s) {
   if (s.tb && s.tb.length) return s.tb.map(i => itemLink(i)).join('<br>');
   if (s.sk.acq === 1) return '<span class="muted">Learned with profession</span>';
+  const tr = trainerReq(s);
+  if (tr) return `<span title="collected in-game">Trainer: ${esc(tr.names.join(', '))}</span>`;
   return '<span class="muted" title="Trainer lists and quest rewards are server-side and not in the client data">Trainer / quest</span>';
 }
 /* Gear view: crafted equippable items grouped by the shared part of their names ("Azure Gustwoven", "Lionheart"). */
@@ -351,7 +354,7 @@ const GEAR_COLS = [
   {h: 'iLvl', r: r => r.it.il, num: true},
   {h: 'Quality', r: r => `<span class="q${r.it.q}">${QNAME[r.it.q]}</span>`},
   {h: 'Binds', r: r => r.it.b === 1 ? '<b>BoP</b>' : r.it.b === 2 ? 'BoE' : r.it.b === 3 ? 'BoU' : ''},
-  {h: 'Recipe', r: r => spellLink(r.sid, {noicon: true}) + ' <span class="muted small">' + skillCell(r.s.sk) + '</span>'},
+  {h: 'Recipe', r: r => spellLink(r.sid, {noicon: true}) + ' <span class="muted small">' + skillCell(r.s.sk, 0, r.s) + '</span>'},
   {h: 'Source', r: r => recipeSource(r.s)},
 ];
 function gearTable(rows, opts) {
@@ -443,7 +446,7 @@ function pageProfession(id, params) {
     {h: 'Recipe', r: r => spellLink(r.id, {badges: true}) + (r.s.sk.chg ? `<div class="chg">${esc(r.s.sk.chg.join('; '))}</div>` : ''), s: r => r.s.n},
     {h: 'Creates', r: r => r.s.cr ? itemLink(r.s.cr[0], {count: r.s.cr[1]}) : (r.s.en ? `<span class="muted">${esc(r.s.en[1])}</span>` : ''), s: r => r.s.cr ? (ITEMS[r.s.cr[0]] || {}).n || '' : ''},
     {h: 'Reagents', r: r => (r.s.rg_ || []).map(g => `<span class="reag">${itemLink(g[0], {count: g[1]})}</span>`).join(' ')},
-    {h: 'Skill', r: r => skillCell(r.s.sk, mine), s: r => r.s.sk.min, num: true},
+    {h: 'Skill', r: r => skillCell(r.s.sk, mine, r.s), s: r => r.s.sk.min, num: true},
     {h: 'Source', r: r => recipeSource(r.s)},
   ];
   let h = head + `<div class="filters">
@@ -496,6 +499,7 @@ function pageItem(id) {
   const uses = (it.fx || []).filter(f => f[0] !== 6).map(f => f[1]);
   side += list('Spell effects', uses, s => spellLink(s, {rank: true}));
   if (it.set) side += `<h3>Item set</h3><p><a href="#/set/${it.set}">${esc(SETS[it.set].n)}</a></p>`;
+  side += collectItemSections(id);
   if (it.mod) side += `<h3>Changed vs Classic Era</h3><p class="chg">${esc(it.mod.join(', '))}${it.old ? `<br>Classic Era name: ${esc(it.old)}` : ''}</p>`;
   return `<h1>${icon(it.ic, 'large')}${esc(it.n)}${badges(it)}</h1>
   <p class="muted">${esc(M.itemClasses[it.c] || '')} › ${esc(subName(it.c, it.sc))}${it.it ? ' › ' + M.invTypes[it.it] : ''} &nbsp; item #${id} &nbsp; <a class="ext" href="${WH}item=${id}" target="_blank">Wowhead Forever ↗</a></p>
@@ -570,6 +574,7 @@ function pageSpell(id) {
   if (s.tb) side += `<h3>Taught by</h3><ul>${s.tb.map(i => `<li>${itemLink(i, {badges: true})}</li>`).join('')}</ul>`;
   if (s.ub) side += `<h3>Used by items</h3><ul>${s.ub.slice(0, 60).map(i => `<li>${itemLink(i)}</li>`).join('')}${s.ub.length > 60 ? `<li class="muted">…and ${s.ub.length - 60} more</li>` : ''}</ul>`;
   if (s.cl) side += `<h3>Skill lines</h3><p>${s.cl.map(l => esc(M.skillLines[l] || l)).join(', ')}</p>`;
+  side += collectSpellSection(s);
   if (s.ad && s.d) side += `<h3>Aura text</h3><p>${esc(s.ad)}</p>`;
   return `<h1>${icon(s.ic, 'large')}${esc(s.n)}${s.r ? ` <span class="muted">${esc(s.r)}</span>` : ''}${badges(s.sk || s)}</h1>
   <p class="muted">spell #${id} &nbsp; <a class="ext" href="${WH}spell=${id}" target="_blank">Wowhead Forever ↗</a></p>
@@ -826,7 +831,23 @@ function pageDungeon(zone, params) {
   const st = STATE.dq;
   st.hl = params.hl || '';
   if (st.hl) { const hq = d.quests.find(q => q.id === +st.hl); if (hq && !questSideOk(hq, st.side)) st.side = 'all'; }
-  const qs = d.quests.filter(q => questSideOk(q, st.side) && (!st.q || q.n.toLowerCase().includes(st.q.toLowerCase())));
+  /* merge in-game collected data: givers for quests Wowhead lacks, and quests picked up inside this instance that Wowhead does not list */
+  const known = new Set(d.quests.map(q => q.id));
+  const collected = Object.entries(COLLECT.quests).filter(([id, cq]) => !known.has(+id) && ((cq.gpos && cq.gpos.i === d.n) || (cq.epos && cq.epos.i === d.n)))
+    .map(([id, cq]) => ({id: +id, n: cq.t || '#' + id, lv: cq.lv || 0, rl: 0, side: 0, xp: cq.xp || 0, type: 0, rew: cq.rew, choice: cq.choice, money: cq.money, col: true,
+      start: cq.giver ? [['npc', cq.giver.id, cq.giver.n || '']] : (cq.item ? [['item', cq.item, ITEMS[cq.item] ? ITEMS[cq.item].n : 'item #' + cq.item]] : undefined),
+      end: cq.ender ? [['npc', cq.ender.id, cq.ender.n || '']] : undefined, desc: cq.txt}));
+  const withCollected = d.quests.map(q => {
+    const cq = COLLECT.quests[q.id];
+    if (!cq) return q;
+    const x = Object.assign({}, q);
+    if (!x.start && cq.giver) x.start = [['npc', cq.giver.id, cq.giver.n || '']];
+    if (!x.start && cq.item) x.start = [['item', cq.item, ITEMS[cq.item] ? ITEMS[cq.item].n : 'item #' + cq.item]];
+    if (!x.end && cq.ender) x.end = [['npc', cq.ender.id, cq.ender.n || '']];
+    if (!x.chain && cq.prev) x.after = cq.prev;
+    return x;
+  }).concat(collected);
+  const qs = withCollected.filter(q => questSideOk(q, st.side) && (!st.q || q.n.toLowerCase().includes(st.q.toLowerCase())));
   const mapId = Object.keys(MAPS).find(id => MAPS[id].n === d.n || MAPS[id].area === d.zone);
   let h = `<h1>${esc(d.n)}</h1><p class="muted">${d.kind === 'raid' ? 'Raid' : 'Dungeon'} &nbsp; <a class="ext" href="${WH}zone=${d.zone}#quests" target="_blank">Wowhead Forever ↗</a>${mapId ? ` &nbsp; <a href="#/map/${mapId}">map</a>` : ''}</p>
   <div class="filters">${sideFilter(st.side)}<input id="dq-q" placeholder="Filter quests" value="${esc(st.q)}"><span class="muted small">${qs.length} quests</span></div>`;
@@ -841,7 +862,7 @@ function pageDungeon(zone, params) {
   const npc = x => `<a class="ext" href="${WH}${x[0]}=${x[1]}" target="_blank">${esc(x[2])}</a>`;
   const giver = q => (q.start || q.end || q.desc) ? `${(q.start || []).map(npc).join(', ') || `<span class="muted" title="Wowhead has no starter recorded: probably a drop or auto-accept">unknown start</span>`} <span class="muted">→</span> ${(q.end || []).map(npc).join(', ') || '<span class="muted">–</span>'}${!q.start && q.desc ? `<div class="muted" style="font-style:italic" title="${esc(q.desc)}">${esc(q.desc.slice(0, 140))}${q.desc.length > 140 ? '…' : ''}</div>` : ''}` : '';
   h += `<table><thead><tr><th>Quest</th><th>Level</th><th>Req</th><th>Side</th><th>XP</th><th>Start → End</th><th>Chain</th><th>Rewards</th><th>Reputation</th><th>Forever changes</th></tr></thead><tbody>`;
-  h += rows.map(({main: q, vars}) => `<tr id="q${q.id}" class="${q.id === hl ? 'hl' : ''}"><td><a href="${WH}quest=${q.id}" target="_blank">${esc(q.n)}</a> <span class="muted small">#${q.id}${who(q) ? ' · ' + esc(who(q)) : ''}</span>${QTYPE[q.type] && q.type !== 81 ? ` <span class="muted small">${QTYPE[q.type]}</span>` : ''}${vars.length ? `<div class="muted small">${vars.length + 1} variants: ${[q].concat(vars).map(v => `<a href="${WH}quest=${v.id}" target="_blank">#${v.id}</a>${who(v) ? ' (' + esc(who(v)) + ')' : ''}`).join(', ')}</div>` : ''}</td>
+  h += rows.map(({main: q, vars}) => `<tr id="q${q.id}" class="${q.id === hl ? 'hl' : ''}"><td><a href="${WH}quest=${q.id}" target="_blank">${esc(q.n)}</a> <span class="muted small">#${q.id}${who(q) ? ' · ' + esc(who(q)) : ''}</span>${q.col ? ' <span class="badge new" title="Recorded in-game by AlcCollect; not on Wowhead">COLLECTED</span>' : ''}${q.after ? `<div class="muted small">offered after <a href="${WH}quest=${q.after}" target="_blank">#${q.after}</a></div>` : ''}${QTYPE[q.type] && q.type !== 81 ? ` <span class="muted small">${QTYPE[q.type]}</span>` : ''}${vars.length ? `<div class="muted small">${vars.length + 1} variants: ${[q].concat(vars).map(v => `<a href="${WH}quest=${v.id}" target="_blank">#${v.id}</a>${who(v) ? ' (' + esc(who(v)) + ')' : ''}`).join(', ')}</div>` : ''}</td>
     <td class="num">${q.lv || ''}</td><td class="num">${q.rl || ''}</td><td><span class="${(SIDE[q.side] || ['', ''])[1]}" ${q.inf ? 'title="Wowhead has no faction flag; inferred from the quest NPC"' : ''}>${(SIDE[q.side] || ['?'])[0]}${q.inf ? '*' : ''}</span></td>
     <td class="num">${q.xp ? q.xp.toLocaleString() : ''}${q.money ? '<br>' + money(q.money) : ''}</td>
     <td class="small">${giver(q)}${vars.map(v => giver(v) ? `<div class="muted">#${v.id}: ${giver(v)}</div>` : '').join('')}</td>
@@ -853,6 +874,48 @@ function bindDungeon() {
   const st = STATE.dq;
   document.querySelectorAll('a[data-side]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); st.side = a.dataset.side; render(); }));
   const q = $('#dq-q'); if (q) q.addEventListener('input', () => { st.q = q.value; rerenderKeepFocus('#dq-q'); });
+}
+
+/* ---------------------------------------------------------------- collected in-game data (AlcCollect addon) */
+const COLLECT = window.FR_COLLECT || {drops: {}, sold: {}, trainers: {}, quests: {}, npcs: {}, vendors: {}, loot: {}, chars: []};
+function npcName(key) { const id = String(key).split(':')[1] || key; return (COLLECT.npcs[id] || {}).n || ''; }
+function collectItemSections(id) {
+  let h = '';
+  const d = COLLECT.drops[id];
+  if (d && d.length) h += `<h3>Dropped by <span class="muted small">collected</span></h3><ul>${d.map(x => `<li>${esc(x[3] || npcName(x[0]) || x[0])} <span class="muted small">${x[1]}× in ${x[2]} loot${x[2] > 1 ? 's' : ''} (${Math.round(100 * x[1] / Math.max(x[2], 1))}%)</span></li>`).join('')}</ul>`;
+  const s = COLLECT.sold[id];
+  if (s && s.length) h += `<h3>Sold by <span class="muted small">collected</span></h3><ul>${s.map(x => `<li>${esc(x[2] || '#' + x[0])} ${x[1] ? money(x[1]) : ''}${x[3] > 0 ? ` <span class="muted small">limited stock (${x[3]})</span>` : ''}</li>`).join('')}</ul>`;
+  return h;
+}
+function collectSpellSection(s) {
+  const t = COLLECT.trainers[(s.n || '').toLowerCase()];
+  if (!t || !t.length) return '';
+  return `<h3>Trainers <span class="muted small">collected</span></h3><ul>${t.map(x => `<li>${esc(x[1] || '#' + x[0])} <span class="muted small">${x[5] ? esc(x[5]) + ' ' : ''}${x[2] ? x[2] : ''}${x[3] ? ', ' + money(x[3]).replace(/<[^>]+>/g, m => m) : ''}</span></li>`).join('')}</ul>`;
+}
+function trainerReq(s) {   /* trainer-taught recipe: skill rank from collected trainer lists */
+  const t = COLLECT.trainers[(s.n || '').toLowerCase()];
+  if (!t) return null;
+  const ranks = t.map(x => x[2]).filter(Boolean);
+  return ranks.length ? {rank: Math.min(...ranks), names: [...new Set(t.map(x => x[1]).filter(Boolean))]} : null;
+}
+function pageCollected() {
+  const c = COLLECT;
+  const n = o => Object.keys(o || {}).length;
+  if (!c.generated) return `<h1>Collected data</h1><p class="muted">Nothing imported yet. Play with the AlcCollect addon, then run <code>python ingest.py</code> and push.</p>`;
+  const zones = {};
+  Object.entries(c.npcs).forEach(([id, r]) => { const z = (r.pos && r.pos[0] && r.pos[0].i) || 'Open world'; (zones[z] = zones[z] || []).push([id, r]); });
+  return `<h1>Collected data</h1><p class="muted">Recorded in-game by the AlcCollect addon (${(c.chars || []).join(', ')}), imported ${esc(c.generated)}. Feeds "Dropped by", "Sold by", trainer skill levels and quest givers across the site.</p>
+  <div class="tiles">
+    <div class="tile"><div><b>${n(c.quests)}</b><div class="sub">quests seen</div></div></div>
+    <div class="tile"><div><b>${n(c.npcs)}</b><div class="sub">NPCs</div></div></div>
+    <div class="tile"><div><b>${n(c.loot)}</b><div class="sub">loot sources</div></div></div>
+    <div class="tile"><div><b>${n(c.vendors)}</b><div class="sub">vendors</div></div></div>
+    <div class="tile"><div><b>${n(c.trainers)}</b><div class="sub">trainer services</div></div></div>
+  </div>
+  ${Object.keys(zones).sort().map(z => `<h2>${esc(z)}</h2><table><thead><tr><th>NPC</th><th>Level</th><th>Type</th><th>Seen</th><th>Drops</th><th>Position</th></tr></thead><tbody>${zones[z].sort((a, b) => (a[1].n || '').localeCompare(b[1].n || '')).map(([id, r]) => {
+    const lt = c.loot['Creature:' + id];
+    return `<tr><td>${esc(r.n || '#' + id)}${r.cls && r.cls !== 'normal' ? ` <span class="muted small">${esc(r.cls)}</span>` : ''}</td><td class="num">${r.lmin ? (r.lmin === r.lmax ? r.lmin : r.lmin + '–' + r.lmax) : ''}</td><td>${esc(r.ct || '')}</td><td class="num">${r.seen}</td><td>${lt ? `${lt.items} items in ${lt.seen} loots` : ''}</td><td class="small muted">${r.pos && r.pos[0] ? r.pos.map(p => `${p.x}, ${p.y}`).join(' · ') : ''}</td></tr>`;
+  }).join('')}</tbody></table>`).join('')}`;
 }
 
 const PATCHES = window.FR_PATCHES || [];
@@ -936,6 +999,7 @@ function render() {
     case 'patches': html = pagePatches(params); break;
     case 'bop': html = pageBop(); break;
     case 'dungeons': html = pageDungeons(); break;
+    case 'collected': html = pageCollected(); break;
     case 'dungeon': html = pageDungeon(id, params); break;
     case 'maps': html = pageMaps(); break;
     case 'map': html = pageMap(id); break;

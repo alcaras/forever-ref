@@ -26,6 +26,28 @@ Every build writes `builds/<build>.json.gz`, a snapshot of the comparable data. 
 snapshots are diffed into the **Patches** page, so each new beta build shows what changed in
 items, spells and recipes. `builds/` is committed; `cache/` and `site/data/` are not.
 
+## In-game collection (AlcCollect)
+
+Server-side data (quest givers, drops, vendors, trainers) comes from the `AlcCollect` addon in
+`D:\addons\wow-addons`, which records passively while playing into the SavedVariables table
+`AlcCollectDB`. After a session:
+
+```bash
+python ingest.py            # reads WTF/Account/*/SavedVariables/AlcCollect.lua, merges into cache/collect, writes site/collect/collect.js
+```
+
+`ingest.py` also accepts files on the command line (`.lua` SavedVariables or the JSON from
+`/alccollect export`). The site shows the result under **Collected**, on item pages ("Dropped by",
+"Sold by"), on recipes (trainer and skill level) and on dungeon pages (givers, chain hints and
+quests Wowhead does not list).
+
+## Dungeon quests (Wowhead)
+
+`quests.py` builds the dungeon quest pages from Wowhead Forever's per-zone quest lists, which are
+harvested through the browser (see `tools/recv.py`) into `cache/wowhead/`. Wowhead rate-limits
+bursts of page fetches, so the chain and quest-giver harvest runs at about 30 pages per call
+with pauses.
+
 ## GitHub Pages
 
 `.github/workflows/pages.yml` runs on push, daily, and on demand: it builds the latest Forever
