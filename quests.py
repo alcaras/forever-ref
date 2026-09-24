@@ -25,6 +25,14 @@ factions = {}
 for r in csv.DictReader(open(os.path.join(ROOT, 'cache', BUILD, 'Faction.csv'), encoding='utf-8', newline='')):
     factions[int(r['ID'])] = r['Name_lang']
 
+DARKMOON = {f for f, n in factions.items() if n == 'Darkmoon Faire'}
+RACES = {int(r['ID']): r['Name_lang'] for r in csv.DictReader(open(os.path.join(ROOT, 'cache', BUILD, 'ChrRaces.csv'), encoding='utf-8', newline=''))} \
+    if os.path.exists(os.path.join(ROOT, 'cache', BUILD, 'ChrRaces.csv')) else {}
+chains_path = os.path.join(ROOT, 'cache', 'wowhead', 'quest-chains.json')
+chains = json.load(open(chains_path, encoding='utf-8')) if os.path.exists(chains_path) else {}
+info_path = os.path.join(ROOT, 'cache', 'wowhead', 'quest-info.json')   # quick facts: Start / End NPC, class, race
+info = json.load(open(info_path, encoding='utf-8')) if os.path.exists(info_path) else {}
+
 dungeons = []
 used_factions = set()
 for z in ORDER:
@@ -34,6 +42,8 @@ for z in ORDER:
     name = NAMES.get(z) or e.get('title', '').replace(' - Zone - Forever', '').strip() or str(z)
     quests = []
     for q in e.get('quests') or []:
+        if any(f in DARKMOON for f, _ in (q.get('reprewards') or [])) or 'Fortune Awaits' in q['name']:   # Darkmoon Faire fortune quests are listed under every dungeon
+            continue
         rec = {'id': q['id'], 'n': q['name'], 'lv': q.get('level') or 0, 'rl': q.get('reqlevel') or 0, 'side': q.get('side') or 0,
                'xp': q.get('xp') or 0, 'type': q.get('type') or 0}
         if q.get('money'):
@@ -49,12 +59,42 @@ for z in ORDER:
         env = q.get('env') or {}
         if env.get('lines'):
             rec['chg'] = env['lines']
+        qi = info.get(str(q['id'])) or {}
+        for k in ('start', 'end'):
+            if qi.get(k):
+                rec[k] = qi[k]          # [[npc|object|item, id, name], ...]
+        if qi.get('cls'):
+            rec['cls'] = qi['cls']
+        if qi.get('race'):
+            rec['race'] = qi['race']
+        ch = chains.get(str(q['id']))
+        if ch and ch != 'ERR' and isinstance(ch, list) and len(ch) > 1:
+            rec['chain'] = ch   # [[step label, [[questId, name], ...]], ...] from the Wowhead "Series" box
         quests.append(rec)
     quests.sort(key=lambda q: (q['lv'], q['n']))
     dungeons.append({'zone': z, 'n': name, 'kind': 'raid' if z in RAIDS else 'dungeon', 'quests': quests,
                      'nodata': e.get('quests') is None})
 
-out = {'source': 'wowhead.com/forever zone pages', 'harvested': os.path.getmtime(SRC) and __import__('datetime').datetime.fromtimestamp(os.path.getmtime(SRC)).strftime('%Y-%m-%d'),
+# Reward items that are not in the Forever client tables: look their names up on Wowhead's tooltip endpoint (cached).
+import json as _json, re, html as _html, time, urllib.request
+site_items = _json.loads(open(os.path.join(ROOT, 'site', 'data', 'items.js'), encoding='utf-8').read()[len('window.FR_ITEMS='):-2])
+missing = sorted({r[0] for d in dungeons for q in d['quests'] for r in (q.get('rew') or []) + (q.get('choice') or []) if str(r[0]) not in site_items})
+cache_path = os.path.join(ROOT, 'cache', 'wowhead', 'items.json')
+extra = _json.load(open(cache_path, encoding='utf-8')) if os.path.exists(cache_path) else {}
+for iid in missing:
+    if str(iid) in extra:
+        continue
+    try:
+        d = _json.loads(urllib.request.urlopen(urllib.request.Request(f'https://nether.wowhead.com/forever/tooltip/item/{iid}', headers={'User-Agent': 'Mozilla/5.0 forever-ref'}), timeout=30).read())
+        extra[str(iid)] = {'n': _html.unescape(d.get('name', '')), 'q': int(d.get('quality', 1)), 'ic': d.get('icon', '')}
+    except Exception as e:
+        extra[str(iid)] = {'n': '', 'q': 1, 'ic': ''}
+        print('  tooltip failed', iid, e)
+    time.sleep(0.3)
+_json.dump(extra, open(cache_path, 'w', encoding='utf-8'), ensure_ascii=False)
+print(f'{len(missing)} reward items not in the client, names from Wowhead')
+
+out = {'source': 'wowhead.com/forever zone pages', 'items': {k: v for k, v in extra.items() if int(k) in missing and v['n']}, 'harvested': os.path.getmtime(SRC) and __import__('datetime').datetime.fromtimestamp(os.path.getmtime(SRC)).strftime('%Y-%m-%d'),
        'dungeons': dungeons, 'factions': {f: factions.get(f, '#%d' % f) for f in sorted(used_factions)}}
 with open(os.path.join(OUT, 'quests.js'), 'w', encoding='utf-8') as f:
     f.write('window.FR_QUESTS=' + json.dumps(out, separators=(',', ':'), ensure_ascii=False) + ';\n')

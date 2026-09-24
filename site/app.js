@@ -770,11 +770,32 @@ const QTYPE = {0: '', 1: 'Group', 21: 'Life', 41: 'PvP', 62: 'Raid', 81: 'Dungeo
 const SIDE = {1: ['Alliance', 'side-a'], 2: ['Horde', 'side-h'], 3: ['Both', 'side-b']};
 function questSideOk(q, want) { return want === 'all' || q.side === 3 || q.side === (want === 'horde' ? 2 : 1); }
 function questRewards(q) {
-  const item = r => ITEMS[r[0]] ? itemLink(r[0], {count: r[1]}) : `<a class="ext" href="${WH}item=${r[0]}" target="_blank">item #${r[0]}</a>`;
+  const item = r => {
+    if (ITEMS[r[0]]) return itemLink(r[0], {count: r[1]});
+    const x = (QUESTS.items || {})[r[0]];
+    return x ? `<a class="q${x.q}" href="${WH}item=${r[0]}" target="_blank" title="Not in the Forever client tables; name from Wowhead">${icon(x.ic)}${esc(x.n)}</a>${r[1] > 1 ? ` <span class="muted">×${r[1]}</span>` : ''}`
+             : `<a class="ext" href="${WH}item=${r[0]}" target="_blank">item #${r[0]}</a>`;
+  };
   let h = '';
   if (q.rew) h += q.rew.map(item).join('<br>');
   if (q.choice) h += (h ? '<br>' : '') + `<span class="muted small">Choose one:</span><br>` + q.choice.map(item).join('<br>');
   return h;
+}
+const QUEST_ZONE = {};
+QUESTS.dungeons.forEach(d => d.quests.forEach(q => { QUEST_ZONE[q.id] = d.zone; }));
+function questChain(q, zone) {
+  if (!q.chain) return '';
+  const pos = q.chain.findIndex(s => s[1].some(x => x[0] === q.id));
+  const names = q.chain.flatMap(s => s[1].map(x => x[1]));
+  const dup = new Set(names.filter((n, i) => names.indexOf(n) !== i));
+  const link = x => {
+    const z = QUEST_ZONE[x[0]];
+    const cls = x[0] === q.id ? 'chain-cur' : '';
+    const label = esc(x[1]) + (dup.has(x[1]) ? ` <span class="muted small">#${x[0]}</span>` : '');
+    if (z) return `<a class="${cls}" href="#/dungeon/${z}?hl=${x[0]}" title="${esc(z === zone ? 'this instance' : (QUESTS.dungeons.find(d => d.zone === z) || {}).n || '')}">${label}</a>`;
+    return `<a class="ext ${cls}" href="${WH}quest=${x[0]}" target="_blank">${label}</a>`;
+  };
+  return `<details class="chain"><summary>Step ${pos + 1} of ${q.chain.length}</summary><ol>${q.chain.map(s => `<li>${s[1].map(link).join(' <span class="muted">or</span> ')}</li>`).join('')}</ol></details>`;
 }
 function questRep(q) {
   return (q.rep || []).map(r => `${esc(QUESTS.factions[r[0]] || '#' + r[0])} <span class="muted">${r[1] > 0 ? '+' : ''}${r[1]}</span>`).join('<br>');
@@ -786,37 +807,51 @@ function pageDungeons() {
     const lv = qs.map(q => q.lv).filter(Boolean);
     return `<tr><td><a href="#/dungeon/${d.zone}">${esc(d.n)}</a>${d.nodata ? ' <span class="muted small">no quest data on Wowhead yet</span>' : ''}</td>
       <td class="num">${qs.length}</td><td class="num">${lv.length ? Math.min(...lv) + '–' + Math.max(...lv) : ''}</td>
-      <td class="small">${qs.slice(0, 4).map(q => esc(q.n)).join(', ')}${qs.length > 4 ? ', …' : ''}</td></tr>`;
+      <td class="small">${[...new Set(qs.map(q => q.n))].slice(0, 4).map(esc).join(', ')}${new Set(qs.map(q => q.n)).size > 4 ? ', …' : ''}</td></tr>`;
   };
-  const sec = (title, kind) => `<h2>${title}</h2><table><thead><tr><th>Instance</th><th>Quests</th><th>Levels</th><th>Examples</th></tr></thead><tbody>${QUESTS.dungeons.filter(d => d.kind === kind).map(row).join('')}</tbody></table>`;
+  /* sort by the instance's quest levels: median of the faction-filtered quest levels, no-data instances last */
+  const key = d => { const lv = d.quests.filter(q => questSideOk(q, st.side)).map(q => q.lv).filter(Boolean).sort((a, b) => a - b); return lv.length ? lv[Math.floor(lv.length / 2)] : 999; };
+  const sec = (title, kind) => `<h2>${title}</h2><table><thead><tr><th>Instance</th><th>Quests</th><th>Levels</th><th>Examples</th></tr></thead><tbody>${QUESTS.dungeons.filter(d => d.kind === kind).sort((a, b) => key(a) - key(b) || a.n.localeCompare(b.n)).map(row).join('')}</tbody></table>`;
   return `<h1>Dungeon quests</h1>
   <p class="muted">Quests are server-side, so this comes from Wowhead's Forever database (harvested ${esc(QUESTS.harvested || '')}), not the client. Rewards link into this site's item data.</p>
   <div class="filters">${sideFilter(st.side)}</div>
   ${sec('Dungeons', 'dungeon')}${sec('Raids', 'raid')}`;
 }
 function sideFilter(cur) {
-  return `<label>Faction <select id="dq-side">${[['horde', 'Horde'], ['alliance', 'Alliance'], ['all', 'Both factions']].map(([v, t]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;
+  return `<span class="tabs side-tabs">${[['horde', 'Horde', 'side-h'], ['alliance', 'Alliance', 'side-a'], ['all', 'Both factions', '']].map(([v, t, c]) => `<a href="#" data-side="${v}" class="${cur === v ? 'on' : ''} ${c}">${t}</a>`).join('')}</span>`;
 }
-function pageDungeon(zone) {
+function pageDungeon(zone, params) {
   const d = QUESTS.dungeons.find(x => x.zone === +zone);
   if (!d) return '<h1>Unknown dungeon</h1>';
   const st = STATE.dq;
+  st.hl = params.hl || '';
+  if (st.hl) { const hq = d.quests.find(q => q.id === +st.hl); if (hq && !questSideOk(hq, st.side)) st.side = 'all'; }
   const qs = d.quests.filter(q => questSideOk(q, st.side) && (!st.q || q.n.toLowerCase().includes(st.q.toLowerCase())));
   const mapId = Object.keys(MAPS).find(id => MAPS[id].n === d.n || MAPS[id].area === d.zone);
   let h = `<h1>${esc(d.n)}</h1><p class="muted">${d.kind === 'raid' ? 'Raid' : 'Dungeon'} &nbsp; <a class="ext" href="${WH}zone=${d.zone}#quests" target="_blank">Wowhead Forever ↗</a>${mapId ? ` &nbsp; <a href="#/map/${mapId}">map</a>` : ''}</p>
   <div class="filters">${sideFilter(st.side)}<input id="dq-q" placeholder="Filter quests" value="${esc(st.q)}"><span class="muted small">${qs.length} quests</span></div>`;
   if (d.nodata) return h + '<p class="muted">Wowhead has no quest list for this instance yet.</p>';
   if (!qs.length) return h + '<p class="muted">No quests for this faction.</p>';
-  h += `<table><thead><tr><th>Quest</th><th>Level</th><th>Req</th><th>Side</th><th>XP</th><th>Rewards</th><th>Reputation</th><th>Forever changes</th></tr></thead><tbody>`;
-  h += qs.map(q => `<tr><td><a href="${WH}quest=${q.id}" target="_blank">${esc(q.n)}</a>${QTYPE[q.type] && q.type !== 81 ? ` <span class="muted small">${QTYPE[q.type]}</span>` : ''}</td>
+  const hl = +(st.hl || 0);
+  /* Same name + level + faction, different ids: per-class/race variants of one quest. Show one row, list the variants. */
+  const groups = new Map();
+  qs.forEach(q => { const k = `${q.n}|${q.lv}|${q.rl}|${q.side}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(q); });
+  const rows = [...groups.values()].map(g => { const main = g.find(q => q.id === hl) || g.find(q => q.chain) || g[0]; return {main, vars: g.filter(q => q !== main)}; });
+  const who = q => [q.cls, q.race].filter(Boolean).join(', ');
+  const npc = x => `<a class="ext" href="${WH}${x[0]}=${x[1]}" target="_blank">${esc(x[2])}</a>`;
+  const giver = q => (q.start || q.end) ? `${(q.start || []).map(npc).join(', ') || '<span class="muted">–</span>'} <span class="muted">→</span> ${(q.end || []).map(npc).join(', ') || '<span class="muted">–</span>'}` : '';
+  h += `<table><thead><tr><th>Quest</th><th>Level</th><th>Req</th><th>Side</th><th>XP</th><th>Start → End</th><th>Chain</th><th>Rewards</th><th>Reputation</th><th>Forever changes</th></tr></thead><tbody>`;
+  h += rows.map(({main: q, vars}) => `<tr id="q${q.id}" class="${q.id === hl ? 'hl' : ''}"><td><a href="${WH}quest=${q.id}" target="_blank">${esc(q.n)}</a> <span class="muted small">#${q.id}${who(q) ? ' · ' + esc(who(q)) : ''}</span>${QTYPE[q.type] && q.type !== 81 ? ` <span class="muted small">${QTYPE[q.type]}</span>` : ''}${vars.length ? `<div class="muted small">${vars.length + 1} variants: ${[q].concat(vars).map(v => `<a href="${WH}quest=${v.id}" target="_blank">#${v.id}</a>${who(v) ? ' (' + esc(who(v)) + ')' : ''}`).join(', ')}</div>` : ''}</td>
     <td class="num">${q.lv || ''}</td><td class="num">${q.rl || ''}</td><td><span class="${(SIDE[q.side] || ['', ''])[1]}">${(SIDE[q.side] || ['?'])[0]}</span></td>
     <td class="num">${q.xp ? q.xp.toLocaleString() : ''}${q.money ? '<br>' + money(q.money) : ''}</td>
+    <td class="small">${giver(q)}${vars.map(v => giver(v) ? `<div class="muted">#${v.id}: ${giver(v)}</div>` : '').join('')}</td>
+    <td class="small">${questChain(q, d.zone)}</td>
     <td>${questRewards(q)}</td><td class="small">${questRep(q)}</td><td class="small chg">${(q.chg || []).map(esc).join('<br>')}</td></tr>`).join('');
   return h + '</tbody></table>';
 }
 function bindDungeon() {
   const st = STATE.dq;
-  const s = $('#dq-side'); if (s) s.addEventListener('change', e => { st.side = e.target.value; render(); });
+  document.querySelectorAll('a[data-side]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); st.side = a.dataset.side; render(); }));
   const q = $('#dq-q'); if (q) q.addEventListener('input', () => { st.q = q.value; rerenderKeepFocus('#dq-q'); });
 }
 
@@ -901,7 +936,7 @@ function render() {
     case 'patches': html = pagePatches(params); break;
     case 'bop': html = pageBop(); break;
     case 'dungeons': html = pageDungeons(); break;
-    case 'dungeon': html = pageDungeon(id); break;
+    case 'dungeon': html = pageDungeon(id, params); break;
     case 'maps': html = pageMaps(); break;
     case 'map': html = pageMap(id); break;
     default: html = '<h1>Not found</h1>';
@@ -911,7 +946,7 @@ function render() {
   if (p === 'items') bindItems();
   if (p === 'class') bindClass();
   if (p === 'bop') bindBop();
-  if (p === 'dungeons' || p === 'dungeon') { bindDungeon(); if (p === 'dungeon' && path !== lastPath) STATE.dq.q = ''; }
+  if (p === 'dungeons' || p === 'dungeon') { bindDungeon(); if (p === 'dungeon' && path !== lastPath) STATE.dq.q = ''; const hlRow = params.hl && document.getElementById('q' + params.hl); if (hlRow) setTimeout(() => hlRow.scrollIntoView({block: 'center'}), 0); }
   if (path !== lastPath) { window.scrollTo(0, 0); lastPath = path; }
   $('#tip').hidden = true;
   const h1 = $('#main h1');
