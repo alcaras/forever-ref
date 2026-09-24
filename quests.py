@@ -32,6 +32,8 @@ chains_path = os.path.join(ROOT, 'cache', 'wowhead', 'quest-chains.json')
 chains = json.load(open(chains_path, encoding='utf-8')) if os.path.exists(chains_path) else {}
 info_path = os.path.join(ROOT, 'cache', 'wowhead', 'quest-info.json')   # quick facts: Start / End NPC, class, race
 info = json.load(open(info_path, encoding='utf-8')) if os.path.exists(info_path) else {}
+desc_path = os.path.join(ROOT, 'cache', 'wowhead', 'quest-desc.json')   # description text, only for quests with no recorded starter
+descs = json.load(open(desc_path, encoding='utf-8')) if os.path.exists(desc_path) else {}
 
 dungeons = []
 used_factions = set()
@@ -63,6 +65,8 @@ for z in ORDER:
         for k in ('start', 'end'):
             if qi.get(k):
                 rec[k] = qi[k]          # [[npc|object|item, id, name], ...]
+        if not qi.get('start') and descs.get(str(q['id'])):
+            rec['desc'] = descs[str(q['id'])][:300]
         if qi.get('cls'):
             rec['cls'] = qi['cls']
         if qi.get('race'):
