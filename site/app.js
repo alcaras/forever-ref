@@ -767,8 +767,8 @@ function pageMap(id) {
 /* ---------------------------------------------------------------- dungeon quests (Wowhead Forever data) */
 const QUESTS = window.FR_QUESTS || {dungeons: [], factions: {}};
 const QTYPE = {0: '', 1: 'Group', 21: 'Life', 41: 'PvP', 62: 'Raid', 81: 'Dungeon', 82: 'World Event', 83: 'Legendary', 84: 'Escort', 85: 'Heroic', 88: 'Raid', 89: 'Raid'};
-const SIDE = {1: ['Alliance', 'side-a'], 2: ['Horde', 'side-h'], 3: ['Both', 'side-b']};
-function questSideOk(q, want) { return want === 'all' || q.side === 3 || q.side === (want === 'horde' ? 2 : 1); }
+const SIDE = {0: ['Unknown', 'side-b'], 1: ['Alliance', 'side-a'], 2: ['Horde', 'side-h'], 3: ['Both', 'side-b']};
+function questSideOk(q, want) { return want === 'all' || !q.side || q.side === 3 || q.side === (want === 'horde' ? 2 : 1); }   /* side 0: Wowhead has no faction flag, show everywhere */
 function questRewards(q) {
   const item = r => {
     if (ITEMS[r[0]]) return itemLink(r[0], {count: r[1]});
