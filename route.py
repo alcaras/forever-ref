@@ -83,7 +83,7 @@ def qxp(qid, level):
     elif qid in WHQ and WHQ[qid].get('xp'):
         qlvl, xp = WHQ[qid].get('lv') or level, WHQ[qid]['xp']
     else:
-        return 0
+        return int(XP_TO_NEXT[min(level, MAX_LEVEL - 1) - 1] * (0.08 if level < 20 else 0.05))   # unknown (Forever-new) quest: estimate
     diff = level - qlvl
     if diff >= 10: return int(xp * 0.1)
     if diff >= 9: return int(xp * 0.2)
@@ -204,6 +204,7 @@ def dungeon_packages():
 
 
 # ---------------------------------------------------------------- RestedXP backbone
+RXP_NAMES = {}   # quest names from RestedXP step text, for Forever-new quests unknown to QuestieDB/Wowhead
 STARTS = {'durotar': '1-6 Durotar', 'tirisfal': '1-6 Tirisfal Glades', 'mulgore': '1-6 Mulgore', 'zephras': '1-14 Zephras Isle'}
 
 
@@ -222,10 +223,14 @@ def rxp_backbone(start):
                     line = line.strip()
                     m = re.match(r'\.goto (\d+),([\d.]+),([\d.]+)', line)
                     if m and not st['goto']: st['goto'] = (int(m.group(1)), float(m.group(2)), float(m.group(3)))
-                    m = re.match(r'\.accept (\d+)', line)
-                    if m: st['accept'].append(int(m.group(1)))
-                    m = re.match(r'\.turnin (\d+)', line)
-                    if m: st['turnin'].append(int(m.group(1)))
+                    m = re.match(r'\.accept (\d+)(?:\s*>>\s*Accept (.*))?', line)
+                    if m:
+                        st['accept'].append(int(m.group(1)))
+                        if m.group(2): RXP_NAMES[int(m.group(1))] = m.group(2).strip()
+                    m = re.match(r'\.turnin (\d+)(?:\s*>>\s*Turn in (.*))?', line)
+                    if m:
+                        st['turnin'].append(int(m.group(1)))
+                        if m.group(2): RXP_NAMES[int(m.group(1))] = m.group(2).strip()
                     m = re.match(r'\.complete (\d+)', line)
                     if m: st['complete'].append(int(m.group(1)))
                     m = re.match(r'\.xp (\d+)', line)
@@ -277,11 +282,61 @@ class Sim:
         return True
 
 
+def build_pool(packages):
+    return [qid for qid, q in Q.items() if is_horde(q) and class_ok(q) and (q.get('zone') or 0) > 0 and not (q.get('special', 0) & 1)
+            and q['zone'] not in {p['zone'] for p in packages} and not q.get('maxlv')]
+
+
+def pick_quest(sim, pool, prereq_deadline, relax=False):
+    """Do the best available quest (XP per estimated minute, deadline and locality weighted). Returns False if none."""
+    best, best_score = None, 0
+    for qid in pool:
+        if not sim.available(qid): continue
+        q = Q[qid]
+        xp = qxp(qid, sim.level)
+        if xp <= 0: continue
+        if not relax and (q.get('lv') or 0) > sim.level + 4: continue
+        sp, ep = quest_start_pos(q), quest_end_pos(q)
+        cost = travel(sim.pos, sp, sim.level) + travel(sp, ep, sim.level) + 60.0
+        for k, lst in (q.get('objs') or {}).items():
+            cost += OBJECTIVE_TIME.get(k, 120.0) * (len(lst) if isinstance(lst, list) else 1)
+        for op in objective_positions(q)[:3]:
+            cost += travel(sp, op, sim.level) * 0.5
+        score = (xp * (1 + KILL_XP_FRACTION)) / cost
+        dl = prereq_deadline.get(qid)
+        if dl is not None:
+            score *= 3.0 if sim.level >= dl - 1 else 1.6
+        if sp and sim.pos and sp[0] == sim.pos[0]: score *= 1.5
+        if (q.get('lv') or 0) > sim.level + 3: score *= 0.5
+        if score > best_score: best, best_score = qid, score
+    if not best:
+        return False if relax else pick_quest(sim, pool, prereq_deadline, relax=True)
+    q = Q[best]
+    sp, ep = quest_start_pos(q), quest_end_pos(q)
+    sim.steps.append({'t': 'accept', 'q': best, 'lv': sim.level, 'pos': sp})
+    xp = qxp(best, sim.level)
+    sim.done.add(best)
+    sim.steps.append({'t': 'turnin', 'q': best, 'lv': sim.level, 'xp': xp, 'pos': ep})
+    sim.gain(xp + int(xp * KILL_XP_FRACTION), 'quest')
+    sim.pos = ep
+    return True
+
+
+def fill_to(sim, target, pool, prereq_deadline, why):
+    """Instead of grinding: quest until the level is reached (or nothing is available)."""
+    n = 0
+    while sim.level < target and pick_quest(sim, pool, prereq_deadline):
+        n += 1
+    if sim.level < target:
+        sim.steps.append({'t': 'note', 'msg': '%s: level %d wanted, %d reached with no quest left; kills will have to cover it' % (why, target, sim.level)})
+
+
 def plan(start=None):
     global START
     if start: START = start
     sim = Sim()
     packages = dungeon_packages()
+    pool = build_pool(packages)
     prereq_deadline = {}   # quest -> earliest run level of a package needing it
     for p in packages:
         for pid in p['pre']:
@@ -301,58 +356,21 @@ def plan(start=None):
                 sim.gain(xp + int(xp * KILL_XP_FRACTION), 'quest')
                 run_dungeons(sim, packages, prereq_deadline)
             if st['xp'] and sim.level < st['xp']:
-                sim.steps.append({'t': 'grind', 'to': st['xp'], 'lv': sim.level})
-                need = 0
-                while sim.level < st['xp']:
-                    need += XP_TO_NEXT[sim.level - 1] - sim.xp
-                    sim.gain(XP_TO_NEXT[sim.level - 1] - sim.xp, 'grind')
+                if sim.pos and len(sim.pos) == 4:   # backbone goto: (None, x, y, uiMapID) -> (area, x, y)
+                    area = next((a for a, m in AREA_TO_MAP.items() if m == sim.pos[3]), None)
+                    sim.pos = (area, sim.pos[1], sim.pos[2]) if area else None
+                fill_to(sim, st['xp'], pool, prereq_deadline, 'guide wants level %d' % st['xp'])
             run_dungeons(sim, packages, prereq_deadline)
     sim.steps.append({'t': 'guide', 'n': 'Generated %d-60' % sim.level, 'src': 'planner'})
     # position after backbone: use the zone of the last turned-in quest
     last = next((s['q'] for s in reversed(sim.steps) if s.get('t') == 'turnin'), None)
     sim.pos = quest_end_pos(Q[last]) if last in Q else None
     # --- generated route
-    pool = [qid for qid, q in Q.items() if is_horde(q) and class_ok(q) and (q.get('zone') or 0) > 0 and not (q.get('special', 0) & 1)
-            and q['zone'] not in {p['zone'] for p in packages} and not q.get('maxlv')]
-    stall = 0
-    while sim.level < MAX_LEVEL and stall < 3:
+    while sim.level < MAX_LEVEL:
         run_dungeons(sim, packages, prereq_deadline)
-        best, best_score = None, 0
-        for qid in pool:
-            if not sim.available(qid): continue
-            q = Q[qid]
-            xp = qxp(qid, sim.level)
-            if xp <= 0: continue
-            sp, ep = quest_start_pos(q), quest_end_pos(q)
-            cost = travel(sim.pos, sp, sim.level) + travel(sp, ep, sim.level) + 60.0
-            objs = q.get('objs') or {}
-            for k, lst in objs.items():
-                cost += OBJECTIVE_TIME.get(k, 120.0) * (len(lst) if isinstance(lst, list) else 1)
-            for op in objective_positions(q)[:3]:
-                cost += travel(sp, op, sim.level) * 0.5
-            score = (xp * (1 + KILL_XP_FRACTION)) / cost
-            dl = prereq_deadline.get(qid)
-            if dl is not None:
-                score *= 3.0 if sim.level >= dl - 1 else 1.6
-            # prefer quests near the player's level band and in the current zone
-            if sp and sim.pos and sp[0] == sim.pos[0]: score *= 1.5
-            if (q.get('lv') or 0) > sim.level + 3: score *= 0.5
-            if score > best_score: best, best_score = qid, score
-        if not best:
-            stall += 1
-            sim.steps.append({'t': 'grind', 'to': sim.level + 1, 'lv': sim.level})
-            sim.gain(XP_TO_NEXT[sim.level - 1] - sim.xp, 'grind')
-            continue
-        stall = 0
-        q = Q[best]
-        sp, ep = quest_start_pos(q), quest_end_pos(q)
-        sim.steps.append({'t': 'accept', 'q': best, 'lv': sim.level, 'pos': sp})
-        sim.active.add(best)
-        xp = qxp(best, sim.level)
-        sim.active.discard(best); sim.done.add(best)
-        sim.steps.append({'t': 'turnin', 'q': best, 'lv': sim.level, 'xp': xp, 'pos': ep})
-        sim.gain(xp + int(xp * KILL_XP_FRACTION), 'quest')
-        sim.pos = ep
+        if not pick_quest(sim, pool, prereq_deadline):
+            sim.steps.append({'t': 'note', 'msg': 'no quest available at level %d; route ends here' % sim.level})
+            break
     run_dungeons(sim, packages, prereq_deadline)   # anything gated at the cap
     return sim, packages
 
@@ -405,7 +423,8 @@ def annotate(sim):
     for s in sim.steps:
         if s.get('q'):
             qid = s['q']
-            s['n'] = Q[qid]['n'] if qid in Q else (WHQ.get(qid, {}).get('n') or '#%d' % qid)
+            s['n'] = Q[qid]['n'] if qid in Q else (WHQ.get(qid, {}).get('n') or RXP_NAMES.get(qid) or '#%d' % qid)
+            if qid not in Q and qid not in WHQ: s['est'] = 1
             if qid in Q:
                 p = quest_start_pos(Q[qid]) if s['t'] == 'accept' else quest_end_pos(Q[qid])
                 if p and p[0] and p[0] > 0:

@@ -1149,7 +1149,8 @@ function pageRoute(params) {
     if (s.t === 'grind') return `<tr><td class="num">${s.lv}</td><td class="muted">Grind to level ${s.to}</td><td></td><td></td></tr>`;
     if (s.t === 'note') return `<tr><td></td><td class="chg" colspan="3">${esc(s.msg)}</td></tr>`;
     const tag = s.dungeon ? ` <span class="muted small">for ${esc(s.dungeon)}</span>` : s.forced ? ` <span class="badge mod" title="pulled forward as a prerequisite">${esc(s.forced)}</span>` : '';
-    return `<tr>${lvl}<td>${s.t === 'accept' ? 'Accept' : 'Turn in'} ${questLink(s.q)}${tag}</td><td>${pos}</td><td class="num small">${s.xp ? s.xp.toLocaleString() + ' xp' : ''}</td></tr>`;
+    const name = QDB.quests[s.q] || QUEST_ZONE[s.q] ? questLink(s.q) : `<a class="ext" href="${WH}quest=${s.q}" target="_blank" title="Forever-new quest: not in QuestieDB yet">${esc(s.n || 'quest #' + s.q)}</a>`;
+    return `<tr>${lvl}<td>${s.t === 'accept' ? 'Accept' : 'Turn in'} ${name}${tag}</td><td>${pos}</td><td class="num small">${s.xp ? s.xp.toLocaleString() + (s.est ? ' xp est.' : ' xp') : ''}</td></tr>`;
   });
   return h + `<table><thead><tr><th>Lv</th><th>Step</th><th>Where</th><th>XP</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
 }
