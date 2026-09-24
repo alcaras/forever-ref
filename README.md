@@ -49,7 +49,21 @@ quests Wowhead does not list).
 points and quest links, item drop / vendor / container sources, objects. The site uses it for
 quest pages (`#/quest/<id>`), NPC pages with spawn pins on the zone map (`#/npc/<id>`), item
 "Dropped by / Sold by / Contained in", dungeon NPC rosters and zone quest lists. Forever-new
-content is not in QuestieDB yet; AlcCollect fills that.
+content is not in QuestieDB yet; AlcCollect fills that. The daily workflow runs `questie.py --fetch`
+and commits `site/questie/questie.js` when QuestieDB's Forever data changed upstream, so the site
+follows Questie's updates on its own. `python tools/update_questie.py` updates the installed
+Questie + QuestieDB addons from the newest GitHub bundle release.
+
+## Leveling route (route.py)
+
+`python route.py [--start durotar|tirisfal|mulgore] [--class Warrior] [--mob-margin N]` writes
+`site/route/route.js` (the **Route** page). Policy: a Horde 5-man runs each dungeon exactly once,
+at the first level where every quest for it (and every prerequisite) can be held and the mobs are
+doable (`max(gate level, lowest mob level + margin)`). Prerequisite chains are pulled forward before
+that level. Levels 1–22 follow RestedXP's free Forever Horde guides (parsed from the installed addon);
+the rest is a greedy XP-per-minute route over QuestieDB quests with travel estimated from spawn
+coordinates and zone sizes. Quest XP comes from QuestieDB's XP table and Wowhead; levels are
+simulated with the Classic XP table plus a kill-XP estimate, so they are approximate.
 
 ## Dungeon quests (Wowhead)
 

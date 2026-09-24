@@ -267,7 +267,7 @@ const LIMITS = {};
 
 /* ---------------------------------------------------------------- pages */
 const STATE = {items: {q: '', c: '', sc: '', qmin: '', lmin: '', lmax: '', flag: ''}, prof: {q: '', skill: '', flag: '', hideGrey: false, view: 'recipes', bop: true, slot: '', lmax: ''}, cls: {id: 0},
-  bop: {q: '', lmax: '', equipOnly: true, newOnly: false}, dq: {side: 'horde', q: ''}};
+  bop: {q: '', lmax: '', equipOnly: true, newOnly: false}, dq: {side: 'horde', q: ''}, route: {from: 1, to: 10}};
 
 function pageHome() {
   const c = M.counts;
@@ -1054,9 +1054,11 @@ function questieItemSections(id) {
   h += list('Reward from', qi.rewardOf, i => questLink(i, {lv: true}));
   return h;
 }
+const DUNGEON_ZONE_ALIASES = {1584: [1584, 1585]};   /* QuestieDB keys Blackrock Depths NPCs on 1585 */
+function dungeonZones(zone) { return DUNGEON_ZONE_ALIASES[zone] || [zone]; }
 function questieDungeonSections(d) {
-  const zone = d.zone;
-  const npcs = Object.keys(QDB.npcs).filter(id => QDB.npcs[id].zone === zone).map(id => [id, QDB.npcs[id]]).sort((a, b) => (b[1].rank || 0) - (a[1].rank || 0) || (b[1].lmax || 0) - (a[1].lmax || 0) || a[1].n.localeCompare(b[1].n));
+  const zones = dungeonZones(d.zone);
+  const npcs = Object.keys(QDB.npcs).filter(id => zones.includes(QDB.npcs[id].zone)).map(id => [id, QDB.npcs[id]]).sort((a, b) => (b[1].rank || 0) - (a[1].rank || 0) || (b[1].lmax || 0) - (a[1].lmax || 0) || a[1].n.localeCompare(b[1].n));
   if (!npcs.length) return '';
   const rows = npcs.map(([id, n]) => `<tr><td>${npcLink(id)}${n.sub ? ` <span class="muted small">&lt;${esc(n.sub)}&gt;</span>` : ''}</td><td class="num">${n.lmin ? (n.lmin === n.lmax ? n.lmin : n.lmin + '–' + n.lmax) : ''}</td><td>${RANK[n.rank] || ''}</td>
     <td class="small">${(n.drops || []).slice(0, 8).map(i => itemLinkAny(i, {noicon: true})).join(', ')}${(n.drops || []).length > 8 ? `, <a href="#/npc/${id}">+${n.drops.length - 8} more</a>` : ''}</td></tr>`);
@@ -1101,7 +1103,7 @@ function prepSection(d, side) {
   const p = dungeonPackage(d, side);
   if (!p.pkg.length) return '';
   const qname = id => { const q = p.pkg.find(x => x.id === id); return q ? esc(q.n) : '#' + id; };
-  const mobs = Object.values(QDB.npcs).filter(n => n.zone === d.zone && n.lmin && !n.friendly);
+  const mobs = Object.values(QDB.npcs).filter(n => dungeonZones(d.zone).includes(n.zone) && n.lmin && !n.friendly);
   const mobLv = mobs.length ? `${Math.min(...mobs.map(n => n.lmin))}–${Math.max(...mobs.map(n => n.lmax || n.lmin))}` : '';
   let h = `<h2>Prep <span class="muted small">run once, as soon as the group can hold every quest</span></h2>
   <div class="tiles"><div class="tile"><div><b>${p.ready}</b><div class="sub">ready at level: every quest and prerequisite obtainable</div></div></div><div class="tile"><div><b>${p.gate}</b><div class="sub">highest required level among the dungeon's ${p.pkg.length} quests</div></div></div><div class="tile"><div><b>${p.pre.length}</b><div class="sub">prerequisite quests to finish first</div></div></div>${mobLv ? `<div class="tile"><div><b>${mobLv}</b><div class="sub">mob levels inside (QuestieDB)</div></div></div>` : ''}</div>`;
@@ -1111,6 +1113,33 @@ function prepSection(d, side) {
   const late = p.pkg.filter(q => q.rl === p.gate);
   if (late.length && p.gate) h += `<p class="muted small">Level ${p.gate} is set by: ${late.map(q => esc(q.n)).join(', ')}.</p>`;
   return h;
+}
+
+/* ---------------------------------------------------------------- leveling route (route.py) */
+const ROUTE = window.FR_ROUTE || null;
+function pageRoute(params) {
+  if (!ROUTE) return '<h1>Route</h1><p class="muted">No route generated yet (run route.py).</p>';
+  const st = STATE.route;
+  const from = +(params.from || st.from || 1), to = +(params.to || st.to || Math.min(from + 9, 60));
+  st.from = from; st.to = to;
+  const dn = ROUTE.dungeons;
+  let h = `<h1>Leveling route <span class="muted" style="font-size:16px">Horde, ${esc(ROUTE.cls)}, start ${esc(ROUTE.start)}</span></h1>
+  <p class="muted">Solo questing with each dungeon run once, as soon as the group can hold every quest for it and the mobs are doable. 1–22 follows RestedXP's free Forever guide; the rest is generated from QuestieDB and Wowhead data. Levels are simulated from quest XP plus an estimate for kills, so treat them as approximate.</p>
+  <h2>Dungeon schedule</h2><table><thead><tr><th>Dungeon</th><th>Run at</th><th>Gate</th><th>Mobs</th><th>Quests</th><th>Prereqs</th><th>Later visit</th></tr></thead><tbody>${dn.map(d => `<tr><td><a href="#/dungeon/${d.zone}">${esc(d.n)}</a></td><td class="num"><b>${d.at || '–'}</b></td><td class="num">${d.gate}</td><td class="num">${d.mobMin}–${d.mobMax}</td><td class="num">${d.own.length}</td><td class="num">${d.pre.length}</td><td class="small">${(d.later || []).length ? d.later.length + ' quests need level ' + Math.max(...d.later.map(q => (QDB.quests[q] || {}).rl || 0)) + '+' : ''}</td></tr>`).join('')}</tbody></table>
+  <h2>Steps</h2><div class="tabs">${Array.from({length: 6}, (_, i) => [i * 10 + 1, Math.min(i * 10 + 10, 60)]).map(([a, b]) => `<a href="#/route?from=${a}&to=${b}" class="${a === from ? 'on' : ''}">${a}–${b}</a>`).join('')}</div>`;
+  const steps = ROUTE.steps.filter(s => (s.lv || 0) >= from && (s.lv || 0) <= to || (s.t === 'level' && s.lv >= from && s.lv <= to + 1));
+  const rows = steps.map(s => {
+    const lvl = `<td class="num">${s.lv || ''}</td>`;
+    const pos = s.pos && s.pos[0] ? `<span class="muted small">${esc(ZONE_NAME[s.pos[0]] || '')} ${s.pos[1] ? s.pos[1].toFixed(0) + ',' + s.pos[2].toFixed(0) : ''}</span>` : (s.zone ? `<span class="muted small">${esc(ZONE_NAME[s.zone] || '')}</span>` : '');
+    if (s.t === 'guide') return `<tr class="cat"><td colspan="4">${esc(s.n)} <span class="muted small">${esc(s.src)}</span></td></tr>`;
+    if (s.t === 'level') return `<tr class="cat"><td colspan="4">Level ${s.lv}</td></tr>`;
+    if (s.t === 'dungeon') return `<tr class="hl"><td class="num">${s.lv}</td><td><b>Dungeon: <a href="#/dungeon/${s.zone}">${esc(s.n)}</a></b> <span class="muted small">gate ${s.gate}, mobs from ${s.mobMin}</span></td><td class="small">${s.quests.map(q => questLink(q)).join(', ')}</td><td></td></tr>`;
+    if (s.t === 'grind') return `<tr><td class="num">${s.lv}</td><td class="muted">Grind to level ${s.to}</td><td></td><td></td></tr>`;
+    if (s.t === 'note') return `<tr><td></td><td class="chg" colspan="3">${esc(s.msg)}</td></tr>`;
+    const tag = s.dungeon ? ` <span class="muted small">for ${esc(s.dungeon)}</span>` : s.forced ? ` <span class="badge mod" title="pulled forward as a prerequisite">${esc(s.forced)}</span>` : '';
+    return `<tr>${lvl}<td>${s.t === 'accept' ? 'Accept' : 'Turn in'} ${questLink(s.q)}${tag}</td><td>${pos}</td><td class="num small">${s.xp ? s.xp.toLocaleString() + ' xp' : ''}</td></tr>`;
+  });
+  return h + `<table><thead><tr><th>Lv</th><th>Step</th><th>Where</th><th>XP</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
 }
 
 const PATCHES = window.FR_PATCHES || [];
@@ -1196,6 +1225,7 @@ function render() {
     case 'dungeons': html = pageDungeons(); break;
     case 'collected': html = pageCollected(); break;
     case 'quest': html = pageQuest(id); break;
+    case 'route': html = pageRoute(params); break;
     case 'npc': html = pageNpc(id); break;
     case 'dungeon': html = pageDungeon(id, params); break;
     case 'maps': html = pageMaps(); break;
