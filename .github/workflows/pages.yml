@@ -39,15 +39,20 @@ jobs:
       - name: Build site for the latest Forever build
         run: python build.py --latest
 
-      - name: Commit new build snapshot
+      - name: Refresh QuestieDB Forever data
+        run: |
+          pip install -q lupa
+          python questie.py --fetch
+
+      - name: Commit new build snapshot and QuestieDB data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add builds
+          git add builds site/questie
           if git diff --cached --quiet; then
-            echo "no new build"
+            echo "nothing new"
           else
-            git commit -m "Snapshot build $(cat builds/LATEST)"
+            git commit -m "Data refresh: build $(cat builds/LATEST), QuestieDB $(python -c "import json;print(json.load(open('cache/questie/source.json')).get('commit','?'))")"
             git push
           fi
 

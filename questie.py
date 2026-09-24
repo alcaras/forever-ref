@@ -15,11 +15,27 @@ os.makedirs(OUT, exist_ok=True)
 RAW = 'https://raw.githubusercontent.com/Questie/QuestieDB/master/data/Forever/'
 FILES = ['foreverQuestDB.lua', 'foreverNpcDB.lua', 'foreverItemDB.lua', 'foreverObjectDB.lua']
 
+META_PATH = os.path.join(CACHE, 'source.json')
 if '--fetch' in sys.argv:
-    for fn in FILES:
-        print('  fetch', fn)
-        data = urllib.request.urlopen(urllib.request.Request(RAW + fn, headers={'User-Agent': 'forever-ref'}), timeout=120).read()
-        open(os.path.join(CACHE, fn), 'wb').write(data)
+    # upstream commit that last touched data/Forever, so the site can say how fresh the data is
+    api = 'https://api.github.com/repos/Questie/QuestieDB/commits?path=data/Forever&per_page=1'
+    try:
+        c = json.loads(urllib.request.urlopen(urllib.request.Request(api, headers={'User-Agent': 'forever-ref'}), timeout=60).read())[0]
+        meta = {'commit': c['sha'][:7], 'date': c['commit']['committer']['date'][:10]}
+    except Exception as e:
+        print('  commit lookup failed:', e)
+        meta = {}
+    old = json.load(open(META_PATH)) if os.path.exists(META_PATH) else {}
+    if meta and meta.get('commit') == old.get('commit') and all(os.path.exists(os.path.join(CACHE, f)) for f in FILES):
+        print('  QuestieDB Forever data unchanged at', meta['commit'], meta['date'])
+    else:
+        for fn in FILES:
+            print('  fetch', fn)
+            data = urllib.request.urlopen(urllib.request.Request(RAW + fn, headers={'User-Agent': 'forever-ref'}), timeout=120).read()
+            open(os.path.join(CACHE, fn), 'wb').write(data)
+        if meta:
+            json.dump(meta, open(META_PATH, 'w'))
+SOURCE_META = json.load(open(META_PATH)) if os.path.exists(META_PATH) else {}
 
 from lupa import lua51
 L = lua51.LuaRuntime()
@@ -168,7 +184,8 @@ for iid, it in items.items():
 for oid, lst_ in objDrops.items():
     if oid in objects: objects[oid]['drops'] = lst_
 
-out = {'source': 'Questie/QuestieDB data/Forever', 'quests': quests, 'npcs': npcs, 'objects': objects, 'items': items}
+out = {'source': 'Questie/QuestieDB data/Forever', 'commit': SOURCE_META.get('commit'), 'date': SOURCE_META.get('date'),
+       'quests': quests, 'npcs': npcs, 'objects': objects, 'items': items}
 for name, obj in out.items():
     if isinstance(obj, dict):
         json.dump(obj, open(os.path.join(CACHE, name + '.json'), 'w', encoding='utf-8'), ensure_ascii=False)

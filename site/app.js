@@ -1027,7 +1027,7 @@ function pageQuest(id) {
   if (q.skill) side += `<p class="muted small">Requires ${esc(M.skillLines[q.skill[0]] || 'skill ' + q.skill[0])} ${q.skill[1]}</p>`;
   if (q.special & 1) side += '<p class="muted small">Repeatable</p>';
   return `<h1>${esc(q.n)}${wq && wq.chg ? '<span class="badge mod" title="' + esc(wq.chg.join('; ')) + '">CHANGED</span>' : ''}</h1>
-  <p class="muted">quest #${id} &nbsp; <a class="ext" href="${WH}quest=${id}" target="_blank">Wowhead Forever ↗</a> &nbsp; <span class="small">data: QuestieDB${wq ? ' + Wowhead' : ''}${cq ? ' + collected' : ''}</span></p>
+  <p class="muted">quest #${id} &nbsp; <a class="ext" href="${WH}quest=${id}" target="_blank">Wowhead Forever ↗</a> &nbsp; <span class="small">data: QuestieDB${QDB.date ? ' as of ' + esc(QDB.date) : ''}${wq ? ' + Wowhead' : ''}${cq ? ' + collected' : ''}</span></p>
   <div class="row"><div class="col">${main}</div><div class="col">${side}</div></div>`;
 }
 function pageNpc(id) {
