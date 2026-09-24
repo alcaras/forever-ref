@@ -51,6 +51,9 @@ jobs:
             git push
           fi
 
+      - name: Stamp asset URLs with the commit hash (cache busting)
+        run: sed -i "s/__V__/${GITHUB_SHA::7}/g" site/index.html
+
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
