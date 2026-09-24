@@ -1127,12 +1127,19 @@ function pageRoute(params) {
   const st = STATE.route;
   const from = +(params.from || st.from || 1), to = +(params.to || st.to || Math.min(from + 9, 60));
   st.from = from; st.to = to;
-  const dn = ROUTE.dungeons;
-  let h = `<h1>Leveling route <span class="muted" style="font-size:16px">Horde, ${esc(ROUTE.cls)}, start ${esc(ROUTE.start)}</span></h1>
-  <p class="muted">Solo questing with each dungeon run once, as soon as the group can hold every quest for it and the mobs are doable. 1–22 follows RestedXP's free Forever guide; the rest is generated from QuestieDB and Wowhead data. Levels are simulated from quest XP plus an estimate for kills, so treat them as approximate.</p>
+  const start = params.start || st.start || 'durotar', cls = params.cls || st.cls || ROUTE.classes[0];
+  st.start = start; st.cls = cls;
+  const R = ROUTE.routes[start + '|' + cls] || ROUTE.routes[Object.keys(ROUTE.routes)[0]];
+  const dn = R.dungeons;
+  const STARTS = {durotar: 'Durotar (Orc, Troll)', mulgore: 'Mulgore (Tauren)', tirisfal: 'Tirisfal (Undead)', zephras: 'Zephras Isle (Skyborne)'};
+  const link = (s, c, label, on) => `<a href="#/route?start=${s}&cls=${c}&from=${from}&to=${to}" class="${on ? 'on' : ''}">${esc(label)}</a>`;
+  let h = `<h1>Leveling route <span class="muted" style="font-size:16px">Horde, ${esc(cls)}, start ${esc(STARTS[start] || start)}</span></h1>
+  <p class="muted">Solo questing with each dungeon run once, as soon as the group can hold every quest for it and the mobs are doable. 1–22 follows RestedXP's free Forever guide; the rest is generated from QuestieDB and Wowhead data. Levels are simulated from quest XP plus an estimate for kills, so treat them as approximate. The class changes only class-gated guide branches and class quests.</p>
+  <div class="tabs">${ROUTE.starts.map(s => link(s, cls, STARTS[s] || s, s === start)).join('')}</div>
+  <div class="tabs">${ROUTE.classes.map(c => link(start, c, c, c === cls)).join('')}</div>
   <h2>Dungeon schedule</h2><table><thead><tr><th>Dungeon</th><th>Run at</th><th>Gate</th><th>Mobs</th><th>Quests</th><th>Prereqs</th><th>Later visit</th></tr></thead><tbody>${dn.map(d => `<tr><td><a href="#/dungeon/${d.zone}">${esc(d.n)}</a></td><td class="num"><b>${d.at || '–'}</b></td><td class="num">${d.gate}</td><td class="num">${d.mobMin}–${d.mobMax}</td><td class="num">${d.own.length}</td><td class="num">${d.pre.length}</td><td class="small">${(d.later || []).length ? d.later.length + ' quests need level ' + Math.max(...d.later.map(q => (QDB.quests[q] || {}).rl || 0)) + '+' : ''}</td></tr>`).join('')}</tbody></table>
-  <h2>Steps</h2><div class="tabs">${Array.from({length: 6}, (_, i) => [i * 10 + 1, Math.min(i * 10 + 10, 60)]).map(([a, b]) => `<a href="#/route?from=${a}&to=${b}" class="${a === from ? 'on' : ''}">${a}–${b}</a>`).join('')}</div>`;
-  const steps = ROUTE.steps.filter(s => (s.lv || 0) >= from && (s.lv || 0) <= to || (s.t === 'level' && s.lv >= from && s.lv <= to + 1));
+  <h2>Steps</h2><div class="tabs">${Array.from({length: 6}, (_, i) => [i * 10 + 1, Math.min(i * 10 + 10, 60)]).map(([a, b]) => `<a href="#/route?start=${start}&cls=${cls}&from=${a}&to=${b}" class="${a === from ? 'on' : ''}">${a}–${b}</a>`).join('')}</div>`;
+  const steps = R.steps.filter(s => (s.lv || 0) >= from && (s.lv || 0) <= to || (s.t === 'level' && s.lv >= from && s.lv <= to + 1));
   const rows = steps.map(s => {
     const lvl = `<td class="num">${s.lv || ''}</td>`;
     const pos = s.pos && s.pos[0] ? `<span class="muted small">${esc(ZONE_NAME[s.pos[0]] || '')} ${s.pos[1] ? s.pos[1].toFixed(0) + ',' + s.pos[2].toFixed(0) : ''}</span>` : (s.zone ? `<span class="muted small">${esc(ZONE_NAME[s.zone] || '')}</span>` : '');
