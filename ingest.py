@@ -73,6 +73,37 @@ def merge(into, db):
     into['chars'] = sorted(set(into.get('chars', []) + [f"{(db.get('char') or {}).get('n')}-{(db.get('char') or {}).get('r')}"]))
 
 
+# ---------------------------------------------------------------- AlcRoute logs -> quest efficiency
+def load_route_logs():
+    out = []
+    for fn in glob.glob(os.path.join(WTF, '*', 'SavedVariables', 'AlcRoute.lua')):
+        from lupa import lua51
+        L = lua51.LuaRuntime()
+        L.execute(open(fn, encoding='utf-8').read())
+        d = lua_to_py(L.globals().AlcRouteDB) or {}
+        out += [e for e in (d.get('log') or []) if isinstance(e, dict)]
+    return out
+
+
+def efficiency(events):
+    """Per quest: XP, minutes from accept to turn-in (overlapping quests share time, so this is an upper bound
+    on the true cost), XP per minute; per level: minutes and XP."""
+    per_quest, per_level = {}, {}
+    last_t = None
+    for e in sorted(events, key=lambda x: x.get('t') or 0):
+        if e.get('e') == 'turnin' and e.get('q'):
+            q = per_quest.setdefault(int(e['q']), {'n': 0, 'xp': 0, 'min': 0.0})
+            q['n'] += 1
+            q['xp'] += e.get('xp') or 0
+            if e.get('dt'):
+                q['min'] += min(e['dt'], 3 * 3600) / 60.0
+            lv = per_level.setdefault(int(e.get('lv') or 0), {'xp': 0, 'quests': 0})
+            lv['xp'] += e.get('xp') or 0
+            lv['quests'] += 1
+    return {'quests': {k: dict(v, xpm=round(v['xp'] / v['min'], 1) if v['min'] else None) for k, v in per_quest.items()},
+            'levels': per_level, 'events': len(events)}
+
+
 files = sys.argv[1:] or glob.glob(os.path.join(WTF, '*', 'SavedVariables', 'AlcCollect.lua'))
 store = {'quests': {}, 'loot': {}, 'npcs': {}, 'vendors': {}, 'trainers': {}, 'chars': []}
 merged_path = os.path.join(CACHE, 'merged.json')
@@ -106,7 +137,9 @@ quests = {}
 for qid, q in store['quests'].items():
     quests[qid] = {k: q[k] for k in ('t', 'lv', 'giver', 'ender', 'prev', 'item', 'txt', 'obj', 'rew', 'choice', 'xp', 'money', 'gpos', 'epos') if k in q}
 
-out = {'generated': datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), 'chars': store['chars'],
+route_events = load_route_logs()
+eff = efficiency(route_events) if route_events else None
+out = {'generated': datetime.datetime.now().strftime('%Y-%m-%d %H:%M'), 'chars': store['chars'], 'eff': eff,
        'drops': drops, 'sold': sold, 'trainers': trainers, 'quests': quests, 'npcs': store['npcs'],
        'vendors': {k: {'n': v.get('n'), 'pos': v.get('pos'), 'n_items': len(v.get('items') or {})} for k, v in store['vendors'].items()},
        'loot': {k: {'n': v.get('n'), 'seen': v['seen'], 'items': len(v['items']), 'pos': v.get('pos')} for k, v in store['loot'].items()}}

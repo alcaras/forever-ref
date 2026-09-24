@@ -923,7 +923,12 @@ function pageCollected() {
   if (!c.generated) return `<h1>Collected data</h1><p class="muted">Nothing imported yet. Play with the AlcCollect addon, then run <code>python ingest.py</code> and push.</p>`;
   const zones = {};
   Object.entries(c.npcs).forEach(([id, r]) => { const z = (r.pos && r.pos[0] && r.pos[0].i) || 'Open world'; (zones[z] = zones[z] || []).push([id, r]); });
-  return `<h1>Collected data</h1><p class="muted">Recorded in-game by the AlcCollect addon (${(c.chars || []).join(', ')}), imported ${esc(c.generated)}. Feeds "Dropped by", "Sold by", trainer skill levels and quest givers across the site.</p>
+  const eff = c.eff;
+  const effHtml = eff ? `<h2>Quest efficiency <span class="muted small">${eff.events} AlcRoute events</span></h2>
+    <p class="muted small">Minutes are accept-to-turn-in; quests done in parallel share that time, so treat XP/min as a lower bound and compare quests against each other rather than to a clock.</p>
+    <table><thead><tr><th>Quest</th><th>Times</th><th>XP</th><th>Min</th><th>XP/min</th></tr></thead><tbody>${Object.entries(eff.quests).sort((a, b) => (a[1].xpm || 1e9) - (b[1].xpm || 1e9)).slice(0, 150).map(([id, q]) => `<tr><td>${questLink(id)}</td><td class="num">${q.n}</td><td class="num">${q.xp.toLocaleString()}</td><td class="num">${q.min ? q.min.toFixed(0) : ''}</td><td class="num">${q.xpm != null ? q.xpm : ''}</td></tr>`).join('')}</tbody></table>
+    <h3>XP per level from quests</h3><table><thead><tr><th>Level</th><th>Quests</th><th>Quest XP</th></tr></thead><tbody>${Object.entries(eff.levels).sort((a, b) => a[0] - b[0]).map(([lv, v]) => `<tr><td class="num">${lv}</td><td class="num">${v.quests}</td><td class="num">${v.xp.toLocaleString()}</td></tr>`).join('')}</tbody></table>` : '';
+  return `<h1>Collected data</h1><p class="muted">Recorded in-game by the AlcCollect addon (${(c.chars || []).join(', ')}), imported ${esc(c.generated)}. Feeds "Dropped by", "Sold by", trainer skill levels and quest givers across the site.</p>${effHtml}
   <div class="tiles">
     <div class="tile"><div><b>${n(c.quests)}</b><div class="sub">quests seen</div></div></div>
     <div class="tile"><div><b>${n(c.npcs)}</b><div class="sub">NPCs</div></div></div>
