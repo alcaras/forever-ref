@@ -821,13 +821,14 @@ function pageDungeons() {
   const row = d => {
     const qs = d.quests.filter(q => questSideOk(q, st.side));
     const lv = qs.map(q => q.lv).filter(Boolean);
+    const p = dungeonPackage(d, st.side);
     return `<tr><td><a href="#/dungeon/${d.zone}">${esc(d.n)}</a>${d.nodata ? ' <span class="muted small">no quest data on Wowhead yet</span>' : ''}</td>
-      <td class="num">${qs.length}</td><td class="num">${lv.length ? Math.min(...lv) + '–' + Math.max(...lv) : ''}</td>
+      <td class="num">${qs.length}</td><td class="num">${lv.length ? Math.min(...lv) + '–' + Math.max(...lv) : ''}</td><td class="num"><b>${p.ready || ''}</b></td><td class="num">${p.pre.length || ''}</td>
       <td class="small">${[...new Set(qs.map(q => q.n))].slice(0, 4).map(esc).join(', ')}${new Set(qs.map(q => q.n)).size > 4 ? ', …' : ''}</td></tr>`;
   };
   /* sort by the instance's quest levels: median of the faction-filtered quest levels, no-data instances last */
   const key = d => { const lv = d.quests.filter(q => questSideOk(q, st.side)).map(q => q.lv).filter(Boolean).sort((a, b) => a - b); return lv.length ? lv[Math.floor(lv.length / 2)] : 999; };
-  const sec = (title, kind) => `<h2>${title}</h2><table><thead><tr><th>Instance</th><th>Quests</th><th>Levels</th><th>Examples</th></tr></thead><tbody>${QUESTS.dungeons.filter(d => d.kind === kind).sort((a, b) => key(a) - key(b) || a.n.localeCompare(b.n)).map(row).join('')}</tbody></table>`;
+  const sec = (title, kind) => `<h2>${title}</h2><table><thead><tr><th>Instance</th><th>Quests</th><th>Levels</th><th title="Earliest level at which the group can hold every quest, prerequisites included">Ready at</th><th>Prereqs</th><th>Examples</th></tr></thead><tbody>${QUESTS.dungeons.filter(d => d.kind === kind).sort((a, b) => key(a) - key(b) || a.n.localeCompare(b.n)).map(row).join('')}</tbody></table>`;
   return `<h1>Dungeon quests</h1>
   <p class="muted">Quests are server-side, so this comes from Wowhead's Forever database (harvested ${esc(QUESTS.harvested || '')}), not the client. Rewards link into this site's item data.</p>
   <div class="filters">${sideFilter(st.side)}</div>
@@ -886,7 +887,7 @@ function pageDungeon(zone, params) {
     <td class="small">${giver(q)}${vars.map(v => giver(v) ? `<div class="muted">#${v.id}: ${giver(v)}</div>` : '').join('')}</td>
     <td class="small">${questChain(q, d.zone)}</td>
     <td>${questRewards(q)}</td><td class="small">${questRep(q)}</td><td class="small chg">${(q.chg || []).map(esc).join('<br>')}</td></tr>`).join('');
-  return h + '</tbody></table>' + questieDungeonSections(d);
+  return h + '</tbody></table>' + prepSection(d, st.side) + questieDungeonSections(d);
 }
 function bindDungeon() {
   const st = STATE.dq;
@@ -1060,6 +1061,56 @@ function questieDungeonSections(d) {
   const rows = npcs.map(([id, n]) => `<tr><td>${npcLink(id)}${n.sub ? ` <span class="muted small">&lt;${esc(n.sub)}&gt;</span>` : ''}</td><td class="num">${n.lmin ? (n.lmin === n.lmax ? n.lmin : n.lmin + '–' + n.lmax) : ''}</td><td>${RANK[n.rank] || ''}</td>
     <td class="small">${(n.drops || []).slice(0, 8).map(i => itemLinkAny(i, {noicon: true})).join(', ')}${(n.drops || []).length > 8 ? `, <a href="#/npc/${id}">+${n.drops.length - 8} more</a>` : ''}</td></tr>`);
   return `<h2>NPCs <span class="muted small">${npcs.length}, from QuestieDB</span></h2><table><thead><tr><th>NPC</th><th>Level</th><th>Rank</th><th>Notable drops</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
+}
+
+/* ---------------------------------------------------------------- dungeon prep: what to hold before the first run, and the earliest level it can happen */
+function dungeonPackage(d, side) {
+  const own = d.quests.filter(q => questSideOk(q, side));
+  const pkg = own.map(q => ({id: q.id, n: q.n, rl: Math.max(q.rl || 0, (QDB.quests[q.id] || {}).rl || 0), lv: q.lv}));
+  const pre = new Map();   // prerequisite id -> {rl, zone, start, needs:[dungeon quest ids], oneOf}
+  const seen = new Set(own.map(q => q.id));
+  const walk = (id, root, oneOf) => {
+    const qq = QDB.quests[id];
+    const preds = [];
+    if (qq) {
+      (qq.preg || []).forEach(p => preds.push([p, false]));
+      (qq.pre || []).forEach(p => preds.push([p, (qq.pre || []).length > 1]));
+      if (qq.parent) preds.push([qq.parent, false]);
+    }
+    const wq = Object.values(QUESTS.dungeons).flatMap(x => x.quests).find(x => x.id === id);
+    if (wq && wq.chain) {   // Wowhead series: everything before this quest's step
+      const pos = wq.chain.findIndex(s => s[1].some(x => x[0] === id));
+      wq.chain.slice(0, Math.max(pos, 0)).forEach(s => s[1].forEach(x => preds.push([x[0], s[1].length > 1])));
+    }
+    preds.forEach(([p, one]) => {
+      if (seen.has(p)) { if (pre.has(p) && !pre.get(p).needs.includes(root)) pre.get(p).needs.push(root); return; }
+      seen.add(p);
+      const pq = QDB.quests[p];
+      const w = Object.values(QUESTS.dungeons).flatMap(x => x.quests).find(x => x.id === p);
+      pre.set(p, {id: p, n: pq ? pq.n : (w ? w.n : '#' + p), rl: Math.max(pq ? pq.rl || 0 : 0, w ? w.rl || 0 : 0), lv: pq ? pq.lv : (w ? w.lv : 0), zone: pq ? pq.zone : null,
+        start: pq ? pq.start : null, needs: [root], oneOf: one || oneOf, side: pq ? questSide(pq) : ''});
+      walk(p, root, one || oneOf);
+    });
+  };
+  own.forEach(q => walk(q.id, q.id, false));
+  const gate = pkg.length ? Math.max(...pkg.map(q => q.rl)) : 0;
+  const preMax = pre.size ? Math.max(...[...pre.values()].filter(p => !p.oneOf).map(p => p.rl), 0) : 0;
+  return {pkg, pre: [...pre.values()].sort((a, b) => a.rl - b.rl || (a.zone || 0) - (b.zone || 0) || a.n.localeCompare(b.n)), gate, ready: Math.max(gate, preMax)};
+}
+function prepSection(d, side) {
+  const p = dungeonPackage(d, side);
+  if (!p.pkg.length) return '';
+  const qname = id => { const q = p.pkg.find(x => x.id === id); return q ? esc(q.n) : '#' + id; };
+  const mobs = Object.values(QDB.npcs).filter(n => n.zone === d.zone && n.lmin && !n.friendly);
+  const mobLv = mobs.length ? `${Math.min(...mobs.map(n => n.lmin))}–${Math.max(...mobs.map(n => n.lmax || n.lmin))}` : '';
+  let h = `<h2>Prep <span class="muted small">run once, as soon as the group can hold every quest</span></h2>
+  <div class="tiles"><div class="tile"><div><b>${p.ready}</b><div class="sub">ready at level: every quest and prerequisite obtainable</div></div></div><div class="tile"><div><b>${p.gate}</b><div class="sub">highest required level among the dungeon's ${p.pkg.length} quests</div></div></div><div class="tile"><div><b>${p.pre.length}</b><div class="sub">prerequisite quests to finish first</div></div></div>${mobLv ? `<div class="tile"><div><b>${mobLv}</b><div class="sub">mob levels inside (QuestieDB)</div></div></div>` : ''}</div>`;
+  if (p.pre.length) {
+    h += `<table><thead><tr><th>Prerequisite</th><th>Req</th><th>Level</th><th>Zone</th><th>Start</th><th>Needed for</th></tr></thead><tbody>${p.pre.map(x => `<tr><td>${questLink(x.id)}${x.oneOf ? ' <span class="muted small">one of</span>' : ''}${x.side && x.side !== 'Both' ? ` <span class="muted small">${x.side}</span>` : ''}</td><td class="num">${x.rl || ''}</td><td class="num">${x.lv || ''}</td><td>${zoneLink(x.zone)}</td><td class="small">${x.start ? [...(x.start.c || []).map(npcLink), ...(x.start.i || []).map(i => itemLinkAny(i, {noicon: true}))].join(', ') : ''}</td><td class="small">${x.needs.map(qname).join(', ')}</td></tr>`).join('')}</tbody></table>`;
+  } else h += '<p class="muted">No prerequisites: every quest is available directly.</p>';
+  const late = p.pkg.filter(q => q.rl === p.gate);
+  if (late.length && p.gate) h += `<p class="muted small">Level ${p.gate} is set by: ${late.map(q => esc(q.n)).join(', ')}.</p>`;
+  return h;
 }
 
 const PATCHES = window.FR_PATCHES || [];
