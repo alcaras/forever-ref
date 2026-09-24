@@ -281,7 +281,8 @@ function pageHome() {
     <a class="tile" href="#/classes"><div><b>Class abilities</b><div class="sub">${c.spells} spells, ${c.newSpells} new</div></div></a>
     <a class="tile" href="#/sets"><div><b>Item sets</b><div class="sub">${c.sets} sets</div></div></a>
     <a class="tile" href="#/zones"><div><b>Zones</b><div class="sub">${c.zones} areas</div></div></a>
-    <a class="tile" href="#/new"><div><b>What's new</b><div class="sub">Diff against Classic Era</div></div></a>
+    <a class="tile" href="#/new"><div><b>What's new vs Classic</b><div class="sub">Diff against Classic Era</div></div></a>
+    ${(window.FR_PATCHES || [])[0] ? (() => { const p = window.FR_PATCHES[0]; const n = s => s.added.length + s.removed.length + s.changed.length; return `<a class="tile" href="#/patches"><div><b>Latest patch ${esc(p.to)}</b><div class="sub">${n(p.items)} item, ${n(p.spells)} spell, ${n(p.recipes)} recipe changes</div></div></a>`; })() : ''}
   </div>
   <h2>What this covers</h2>
   <p>Everything here is read from the game client's database tables: items with computed stats, armor and damage; spells and their tooltip text; profession recipes with reagents, skill thresholds and the recipe items that teach them; item sets; zones.</p>
