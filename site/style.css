@@ -90,6 +90,7 @@ button:hover { background: #2b323c; }
 .cat { background: var(--panel2); }
 .cat td { color: var(--gold); font-weight: 600; }
 .chg { color: var(--mod); font-size: 12px; }
+.side-h { color: #ff6b6b; } .side-a { color: #6bb2ff; } .side-b { color: var(--muted); }
 h4 { margin: 12px 0 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; }
 .mapwrap { position: relative; margin: 10px 0 16px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .mapwrap img { display: block; width: 100%; height: auto; }

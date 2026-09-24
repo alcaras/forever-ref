@@ -263,7 +263,7 @@ const LIMITS = {};
 
 /* ---------------------------------------------------------------- pages */
 const STATE = {items: {q: '', c: '', sc: '', qmin: '', lmin: '', lmax: '', flag: ''}, prof: {q: '', skill: '', flag: '', hideGrey: false, view: 'recipes', bop: true, slot: '', lmax: ''}, cls: {id: 0},
-  bop: {q: '', lmax: '', equipOnly: true, newOnly: false}};
+  bop: {q: '', lmax: '', equipOnly: true, newOnly: false}, dq: {side: 'horde', q: ''}};
 
 function pageHome() {
   const c = M.counts;
@@ -272,6 +272,7 @@ function pageHome() {
   <div class="tiles">
     <a class="tile" href="#/professions"><div><b>Professions</b><div class="sub">${c.recipes} recipes, ${c.newRecipes} new in Forever</div></div></a>
     <a class="tile" href="#/bop"><div><b>BoP crafts</b><div class="sub">Profession-only gear, grouped by set</div></div></a>
+    <a class="tile" href="#/dungeons"><div><b>Dungeon quests</b><div class="sub">Per instance, from Wowhead Forever</div></div></a>
     <a class="tile" href="#/items"><div><b>Items</b><div class="sub">${c.items} items, ${c.newItems} new, ${c.modItems} changed</div></div></a>
     <a class="tile" href="#/classes"><div><b>Class abilities</b><div class="sub">${c.spells} spells, ${c.newSpells} new</div></div></a>
     <a class="tile" href="#/sets"><div><b>Item sets</b><div class="sub">${c.sets} sets</div></div></a>
@@ -763,6 +764,62 @@ function pageMap(id) {
   ${subs.length ? `<div class="col zones"><h3>Subzones</h3><ul>${subs.map(z => `<li><a href="#/zone/${z.id}">${esc(z.n)}</a></li>`).join('')}</ul></div>` : ''}</div>`;
 }
 
+/* ---------------------------------------------------------------- dungeon quests (Wowhead Forever data) */
+const QUESTS = window.FR_QUESTS || {dungeons: [], factions: {}};
+const QTYPE = {0: '', 1: 'Group', 21: 'Life', 41: 'PvP', 62: 'Raid', 81: 'Dungeon', 82: 'World Event', 83: 'Legendary', 84: 'Escort', 85: 'Heroic', 88: 'Raid', 89: 'Raid'};
+const SIDE = {1: ['Alliance', 'side-a'], 2: ['Horde', 'side-h'], 3: ['Both', 'side-b']};
+function questSideOk(q, want) { return want === 'all' || q.side === 3 || q.side === (want === 'horde' ? 2 : 1); }
+function questRewards(q) {
+  const item = r => ITEMS[r[0]] ? itemLink(r[0], {count: r[1]}) : `<a class="ext" href="${WH}item=${r[0]}" target="_blank">item #${r[0]}</a>`;
+  let h = '';
+  if (q.rew) h += q.rew.map(item).join('<br>');
+  if (q.choice) h += (h ? '<br>' : '') + `<span class="muted small">Choose one:</span><br>` + q.choice.map(item).join('<br>');
+  return h;
+}
+function questRep(q) {
+  return (q.rep || []).map(r => `${esc(QUESTS.factions[r[0]] || '#' + r[0])} <span class="muted">${r[1] > 0 ? '+' : ''}${r[1]}</span>`).join('<br>');
+}
+function pageDungeons() {
+  const st = STATE.dq;
+  const row = d => {
+    const qs = d.quests.filter(q => questSideOk(q, st.side));
+    const lv = qs.map(q => q.lv).filter(Boolean);
+    return `<tr><td><a href="#/dungeon/${d.zone}">${esc(d.n)}</a>${d.nodata ? ' <span class="muted small">no quest data on Wowhead yet</span>' : ''}</td>
+      <td class="num">${qs.length}</td><td class="num">${lv.length ? Math.min(...lv) + '–' + Math.max(...lv) : ''}</td>
+      <td class="small">${qs.slice(0, 4).map(q => esc(q.n)).join(', ')}${qs.length > 4 ? ', …' : ''}</td></tr>`;
+  };
+  const sec = (title, kind) => `<h2>${title}</h2><table><thead><tr><th>Instance</th><th>Quests</th><th>Levels</th><th>Examples</th></tr></thead><tbody>${QUESTS.dungeons.filter(d => d.kind === kind).map(row).join('')}</tbody></table>`;
+  return `<h1>Dungeon quests</h1>
+  <p class="muted">Quests are server-side, so this comes from Wowhead's Forever database (harvested ${esc(QUESTS.harvested || '')}), not the client. Rewards link into this site's item data.</p>
+  <div class="filters">${sideFilter(st.side)}</div>
+  ${sec('Dungeons', 'dungeon')}${sec('Raids', 'raid')}`;
+}
+function sideFilter(cur) {
+  return `<label>Faction <select id="dq-side">${[['horde', 'Horde'], ['alliance', 'Alliance'], ['all', 'Both factions']].map(([v, t]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;
+}
+function pageDungeon(zone) {
+  const d = QUESTS.dungeons.find(x => x.zone === +zone);
+  if (!d) return '<h1>Unknown dungeon</h1>';
+  const st = STATE.dq;
+  const qs = d.quests.filter(q => questSideOk(q, st.side) && (!st.q || q.n.toLowerCase().includes(st.q.toLowerCase())));
+  const mapId = Object.keys(MAPS).find(id => MAPS[id].n === d.n || MAPS[id].area === d.zone);
+  let h = `<h1>${esc(d.n)}</h1><p class="muted">${d.kind === 'raid' ? 'Raid' : 'Dungeon'} &nbsp; <a class="ext" href="${WH}zone=${d.zone}#quests" target="_blank">Wowhead Forever ↗</a>${mapId ? ` &nbsp; <a href="#/map/${mapId}">map</a>` : ''}</p>
+  <div class="filters">${sideFilter(st.side)}<input id="dq-q" placeholder="Filter quests" value="${esc(st.q)}"><span class="muted small">${qs.length} quests</span></div>`;
+  if (d.nodata) return h + '<p class="muted">Wowhead has no quest list for this instance yet.</p>';
+  if (!qs.length) return h + '<p class="muted">No quests for this faction.</p>';
+  h += `<table><thead><tr><th>Quest</th><th>Level</th><th>Req</th><th>Side</th><th>XP</th><th>Rewards</th><th>Reputation</th><th>Forever changes</th></tr></thead><tbody>`;
+  h += qs.map(q => `<tr><td><a href="${WH}quest=${q.id}" target="_blank">${esc(q.n)}</a>${QTYPE[q.type] && q.type !== 81 ? ` <span class="muted small">${QTYPE[q.type]}</span>` : ''}</td>
+    <td class="num">${q.lv || ''}</td><td class="num">${q.rl || ''}</td><td><span class="${(SIDE[q.side] || ['', ''])[1]}">${(SIDE[q.side] || ['?'])[0]}</span></td>
+    <td class="num">${q.xp ? q.xp.toLocaleString() : ''}${q.money ? '<br>' + money(q.money) : ''}</td>
+    <td>${questRewards(q)}</td><td class="small">${questRep(q)}</td><td class="small chg">${(q.chg || []).map(esc).join('<br>')}</td></tr>`).join('');
+  return h + '</tbody></table>';
+}
+function bindDungeon() {
+  const st = STATE.dq;
+  const s = $('#dq-side'); if (s) s.addEventListener('change', e => { st.side = e.target.value; render(); });
+  const q = $('#dq-q'); if (q) q.addEventListener('input', () => { st.q = q.value; rerenderKeepFocus('#dq-q'); });
+}
+
 const PATCHES = window.FR_PATCHES || [];
 const FIELD_NAMES = {n: 'name', q: 'quality', il: 'item level', rl: 'required level', b: 'binding', mc: 'unique', st: 'stack', sp: 'sell price',
   cs: 'bag slots', ac: 'classes', rs: 'required skill', s: 'stats', ar: 'armor', dm: 'damage', fx: 'effects', set: 'set', c: 'class', sc: 'subclass',
@@ -843,6 +900,8 @@ function render() {
     case 'search': html = pageSearch(params); break;
     case 'patches': html = pagePatches(params); break;
     case 'bop': html = pageBop(); break;
+    case 'dungeons': html = pageDungeons(); break;
+    case 'dungeon': html = pageDungeon(id); break;
     case 'maps': html = pageMaps(); break;
     case 'map': html = pageMap(id); break;
     default: html = '<h1>Not found</h1>';
@@ -852,6 +911,7 @@ function render() {
   if (p === 'items') bindItems();
   if (p === 'class') bindClass();
   if (p === 'bop') bindBop();
+  if (p === 'dungeons' || p === 'dungeon') { bindDungeon(); if (p === 'dungeon' && path !== lastPath) STATE.dq.q = ''; }
   if (path !== lastPath) { window.scrollTo(0, 0); lastPath = path; }
   $('#tip').hidden = true;
   const h1 = $('#main h1');
