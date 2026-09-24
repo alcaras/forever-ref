@@ -263,7 +263,7 @@ const LIMITS = {};
 
 /* ---------------------------------------------------------------- pages */
 const STATE = {items: {q: '', c: '', sc: '', qmin: '', lmin: '', lmax: '', flag: ''}, prof: {q: '', skill: '', flag: '', hideGrey: false, view: 'recipes', bop: true, slot: '', lmax: ''}, cls: {id: 0},
-  bop: {q: '', lmax: '', equipOnly: true, newOnly: false}, dq: {side: 'all', q: ''}};
+  bop: {q: '', lmax: '', equipOnly: true, newOnly: false}, dq: {side: 'horde', q: ''}};
 
 function pageHome() {
   const c = M.counts;
@@ -795,7 +795,7 @@ function pageDungeons() {
   ${sec('Dungeons', 'dungeon')}${sec('Raids', 'raid')}`;
 }
 function sideFilter(cur) {
-  return `<label>Faction <select id="dq-side">${[['all', 'Both factions'], ['horde', 'Horde'], ['alliance', 'Alliance']].map(([v, t]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;
+  return `<label>Faction <select id="dq-side">${[['horde', 'Horde'], ['alliance', 'Alliance'], ['all', 'Both factions']].map(([v, t]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;
 }
 function pageDungeon(zone) {
   const d = QUESTS.dungeons.find(x => x.zone === +zone);
