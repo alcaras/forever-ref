@@ -108,6 +108,7 @@ h4 { margin: 12px 0 4px; font-size: 13px; color: var(--muted); text-transform: u
 .maprect.area { border-color: transparent; }
 .maprect.area span { opacity: 0; }
 .maprect.area:hover span { opacity: 1; }
+.pin { position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px; border-radius: 50%; background: #ffd100; border: 1px solid #000; box-shadow: 0 0 4px #000; }
 .zones ul { columns: 3; list-style: none; padding: 0; margin: 0; }
 .zones ul ul { columns: 1; padding-left: 14px; }
 .zones li { break-inside: avoid; padding: 2px 0; }

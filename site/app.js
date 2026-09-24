@@ -174,6 +174,8 @@ function buildIndex() {
   for (const id in ITEMS) INDEX.push({t: 'item', id, n: ITEMS[id].n, l: ITEMS[id].n.toLowerCase()});
   for (const id in SPELLS) { const s = SPELLS[id]; if (s.n) INDEX.push({t: s.sk ? 'recipe' : 'spell', id, n: s.n + (s.r ? ' (' + s.r + ')' : ''), l: s.n.toLowerCase()}); }
   for (const id in SETS) INDEX.push({t: 'set', id, n: SETS[id].n, l: SETS[id].n.toLowerCase()});
+  for (const id in QDB.quests) INDEX.push({t: 'quest', id, n: QDB.quests[id].n + ' (' + QDB.quests[id].lv + ')', l: QDB.quests[id].n.toLowerCase()});
+  for (const id in QDB.npcs) { const n = QDB.npcs[id]; if (n.n && !/^(Waypoint|Spawn Point)/.test(n.n)) INDEX.push({t: 'npc', id, n: n.n + (n.lmin ? ' (' + n.lmin + ')' : ''), l: n.n.toLowerCase()}); }
   ZONES.zones.forEach(z => { if (z.n) INDEX.push({t: 'zone', id: z.id, n: z.n, l: z.n.toLowerCase()}); });
   PROFS.forEach(p => INDEX.push({t: 'profession', id: p.id, n: p.n, l: p.n.toLowerCase()}));
 }
@@ -187,7 +189,7 @@ function search(q, limit) {
     if (i === 0) starts.push(e); else if (i > 0) inc.push(e);
     if (starts.length >= limit) break;
   }
-  const order = {profession: 0, recipe: 1, item: 2, set: 3, spell: 4, zone: 5};
+  const order = {profession: 0, recipe: 1, item: 2, quest: 3, npc: 4, set: 5, spell: 6, zone: 7};
   const rank = a => order[a.t];
   starts.sort((a, b) => rank(a) - rank(b) || a.n.localeCompare(b.n));
   inc.sort((a, b) => rank(a) - rank(b) || a.n.localeCompare(b.n));
@@ -197,6 +199,8 @@ function resultLink(e) {
   if (e.t === 'item') return itemLink(e.id);
   if (e.t === 'spell' || e.t === 'recipe') return spellLink(e.id, {rank: true});
   if (e.t === 'set') return `<a href="#/set/${e.id}">${esc(e.n)}</a>`;
+  if (e.t === 'quest') return `<a href="#/quest/${e.id}">${esc(e.n)}</a>`;
+  if (e.t === 'npc') return `<a href="#/npc/${e.id}">${esc(e.n)}</a>`;
   if (e.t === 'zone') return `<a href="#/zone/${e.id}">${esc(e.n)}</a>`;
   return `<a href="#/profession/${e.id}">${esc(e.n)}</a>`;
 }
@@ -499,6 +503,7 @@ function pageItem(id) {
   const uses = (it.fx || []).filter(f => f[0] !== 6).map(f => f[1]);
   side += list('Spell effects', uses, s => spellLink(s, {rank: true}));
   if (it.set) side += `<h3>Item set</h3><p><a href="#/set/${it.set}">${esc(SETS[it.set].n)}</a></p>`;
+  side += questieItemSections(id);
   side += collectItemSections(id);
   if (it.mod) side += `<h3>Changed vs Classic Era</h3><p class="chg">${esc(it.mod.join(', '))}${it.old ? `<br>Classic Era name: ${esc(it.old)}` : ''}</p>`;
   return `<h1>${icon(it.ic, 'large')}${esc(it.n)}${badges(it)}</h1>
@@ -706,9 +711,15 @@ function pageZone(id) {
   const parent = z.p ? ZONES.zones.find(x => x.id === z.p) : null;
   const kids = ZONES.zones.filter(x => x.p === z.id).sort((a, b) => a.n.localeCompare(b.n));
   const mapId = MAP_BY_AREA[z.id] || (parent && MAP_BY_AREA[parent.id]);
+  const zq = Object.keys(QDB.quests).filter(k => QDB.quests[k].zone === z.id).map(k => [k, QDB.quests[k]]).sort((a, b) => a[1].lv - b[1].lv || a[1].n.localeCompare(b[1].n));
+  const zn = Object.keys(QDB.npcs).filter(k => QDB.npcs[k].zone === z.id && (QDB.npcs[k].rank || 0) > 0).map(k => [k, QDB.npcs[k]]).sort((a, b) => (b[1].rank || 0) - (a[1].rank || 0) || a[1].n.localeCompare(b[1].n));
+  const st = STATE.dq;
+  const zqf = zq.filter(([k, q]) => st.side === 'all' || questSide(q) === 'Both' || questSide(q).toLowerCase() === st.side);
   return `<h1>${esc(z.n)}</h1><p class="muted">${esc((ZONES.maps[z.m] || {}).n || '')}${parent ? ` › <a href="#/zone/${parent.id}">${esc(parent.n)}</a>` : ''} &nbsp; area #${z.id} &nbsp; <a class="ext" href="${WH}zone=${z.id}" target="_blank">Wowhead Forever ↗</a></p>
   ${mapId ? mapImage(mapId) : ''}
-  ${kids.length ? `<div class="zones"><h2>Subzones</h2><ul>${kids.map(k => `<li><a href="#/zone/${k.id}">${esc(k.n)}</a></li>`).join('')}</ul></div>` : ''}`;
+  ${kids.length ? `<div class="zones"><h2>Subzones</h2><ul>${kids.map(k => `<li><a href="#/zone/${k.id}">${esc(k.n)}</a></li>`).join('')}</ul></div>` : ''}
+  ${zq.length ? `<h2>Quests <span class="muted small">${zqf.length} of ${zq.length}, QuestieDB</span></h2><div class="filters">${sideFilter(st.side)}</div><table><thead><tr><th>Quest</th><th>Level</th><th>Req</th><th>Side</th><th>Start</th><th>End</th></tr></thead><tbody>${zqf.map(([k, q]) => `<tr><td>${questLink(k)}</td><td class="num">${q.lv}</td><td class="num">${q.rl || ''}</td><td>${questSide(q)}</td><td class="small">${[...((q.start || {}).c || []).map(npcLink), ...((q.start || {}).i || []).map(i => itemLinkAny(i, {noicon: true}))].join(', ')}</td><td class="small">${((q.end || {}).c || []).map(npcLink).join(', ')}</td></tr>`).join('')}</tbody></table>` : ''}
+  ${zn.length ? `<h2>Notable NPCs <span class="muted small">elites and rares, QuestieDB</span></h2><p>${zn.map(([k, n]) => npcLink(k) + ` <span class="muted small">${n.lmin || ''}${n.rank ? ' ' + RANK[n.rank] : ''}</span>`).join(' &nbsp;·&nbsp; ')}</p>` : ''}`;
 }
 
 function pageNew() {
@@ -837,6 +848,13 @@ function pageDungeon(zone, params) {
     .map(([id, cq]) => ({id: +id, n: cq.t || '#' + id, lv: cq.lv || 0, rl: 0, side: 0, xp: cq.xp || 0, type: 0, rew: cq.rew, choice: cq.choice, money: cq.money, col: true,
       start: cq.giver ? [['npc', cq.giver.id, cq.giver.n || '']] : (cq.item ? [['item', cq.item, ITEMS[cq.item] ? ITEMS[cq.item].n : 'item #' + cq.item]] : undefined),
       end: cq.ender ? [['npc', cq.ender.id, cq.ender.n || '']] : undefined, desc: cq.txt}));
+  /* QuestieDB quests for this zone that Wowhead's list lacks (rare, but keeps the page complete) */
+  const knownAll = new Set([...known, ...collected.map(q => q.id)]);
+  const questie = Object.keys(QDB.quests).filter(id => QDB.quests[id].zone === d.zone && !knownAll.has(+id)).map(id => { const q = QDB.quests[id];
+    return {id: +id, n: q.n, lv: q.lv, rl: q.rl, side: questSide(q) === 'Both' ? 3 : questSide(q) === 'Horde' ? 2 : 1, xp: 0, type: 0, qdb: true,
+      start: [...((q.start || {}).c || []).map(c => ['npc', c, (QDB.npcs[c] || {}).n || '']), ...((q.start || {}).i || []).map(i => ['item', i, ITEMS[i] ? ITEMS[i].n : (QDB.items[i] || {}).n || 'item #' + i])],
+      end: ((q.end || {}).c || []).map(c => ['npc', c, (QDB.npcs[c] || {}).n || ''])}; });
+  collected.push(...questie);
   const withCollected = d.quests.map(q => {
     const cq = COLLECT.quests[q.id];
     if (!cq) return q;
@@ -851,8 +869,8 @@ function pageDungeon(zone, params) {
   const mapId = Object.keys(MAPS).find(id => MAPS[id].n === d.n || MAPS[id].area === d.zone);
   let h = `<h1>${esc(d.n)}</h1><p class="muted">${d.kind === 'raid' ? 'Raid' : 'Dungeon'} &nbsp; <a class="ext" href="${WH}zone=${d.zone}#quests" target="_blank">Wowhead Forever ↗</a>${mapId ? ` &nbsp; <a href="#/map/${mapId}">map</a>` : ''}</p>
   <div class="filters">${sideFilter(st.side)}<input id="dq-q" placeholder="Filter quests" value="${esc(st.q)}"><span class="muted small">${qs.length} quests</span></div>`;
-  if (d.nodata) return h + '<p class="muted">Wowhead has no quest list for this instance yet.</p>';
-  if (!qs.length) return h + '<p class="muted">No quests for this faction.</p>';
+  if (d.nodata && !qs.length) return h + '<p class="muted">Wowhead has no quest list for this instance yet.</p>' + questieDungeonSections(d);
+  if (!qs.length) return h + '<p class="muted">No quests for this faction.</p>' + questieDungeonSections(d);
   const hl = +(st.hl || 0);
   /* Same name + level + faction, different ids: per-class/race variants of one quest. Show one row, list the variants. */
   const groups = new Map();
@@ -862,13 +880,13 @@ function pageDungeon(zone, params) {
   const npc = x => `<a class="ext" href="${WH}${x[0]}=${x[1]}" target="_blank">${esc(x[2])}</a>`;
   const giver = q => (q.start || q.end || q.desc) ? `${(q.start || []).map(npc).join(', ') || `<span class="muted" title="Wowhead has no starter recorded: probably a drop or auto-accept">unknown start</span>`} <span class="muted">→</span> ${(q.end || []).map(npc).join(', ') || '<span class="muted">–</span>'}${!q.start && q.desc ? `<div class="muted" style="font-style:italic" title="${esc(q.desc)}">${esc(q.desc.slice(0, 140))}${q.desc.length > 140 ? '…' : ''}</div>` : ''}` : '';
   h += `<table><thead><tr><th>Quest</th><th>Level</th><th>Req</th><th>Side</th><th>XP</th><th>Start → End</th><th>Chain</th><th>Rewards</th><th>Reputation</th><th>Forever changes</th></tr></thead><tbody>`;
-  h += rows.map(({main: q, vars}) => `<tr id="q${q.id}" class="${q.id === hl ? 'hl' : ''}"><td><a href="${WH}quest=${q.id}" target="_blank">${esc(q.n)}</a> <span class="muted small">#${q.id}${who(q) ? ' · ' + esc(who(q)) : ''}</span>${q.col ? ' <span class="badge new" title="Recorded in-game by AlcCollect; not on Wowhead">COLLECTED</span>' : ''}${q.after ? `<div class="muted small">offered after <a href="${WH}quest=${q.after}" target="_blank">#${q.after}</a></div>` : ''}${QTYPE[q.type] && q.type !== 81 ? ` <span class="muted small">${QTYPE[q.type]}</span>` : ''}${vars.length ? `<div class="muted small">${vars.length + 1} variants: ${[q].concat(vars).map(v => `<a href="${WH}quest=${v.id}" target="_blank">#${v.id}</a>${who(v) ? ' (' + esc(who(v)) + ')' : ''}`).join(', ')}</div>` : ''}</td>
+  h += rows.map(({main: q, vars}) => `<tr id="q${q.id}" class="${q.id === hl ? 'hl' : ''}"><td>${QDB.quests[q.id] ? `<a href="#/quest/${q.id}">${esc(q.n)}</a>` : `<a href="${WH}quest=${q.id}" target="_blank">${esc(q.n)}</a>`} <span class="muted small">#${q.id}${who(q) ? ' · ' + esc(who(q)) : ''}</span>${q.col ? ' <span class="badge new" title="Recorded in-game by AlcCollect; not on Wowhead">COLLECTED</span>' : ''}${q.qdb ? ' <span class="badge mod" title="From QuestieDB; not in Wowhead\'s zone list">QUESTIE</span>' : ''}${q.after ? `<div class="muted small">offered after <a href="${WH}quest=${q.after}" target="_blank">#${q.after}</a></div>` : ''}${QTYPE[q.type] && q.type !== 81 ? ` <span class="muted small">${QTYPE[q.type]}</span>` : ''}${vars.length ? `<div class="muted small">${vars.length + 1} variants: ${[q].concat(vars).map(v => `<a href="${WH}quest=${v.id}" target="_blank">#${v.id}</a>${who(v) ? ' (' + esc(who(v)) + ')' : ''}`).join(', ')}</div>` : ''}</td>
     <td class="num">${q.lv || ''}</td><td class="num">${q.rl || ''}</td><td><span class="${(SIDE[q.side] || ['', ''])[1]}" ${q.inf ? 'title="Wowhead has no faction flag; inferred from the quest NPC"' : ''}>${(SIDE[q.side] || ['?'])[0]}${q.inf ? '*' : ''}</span></td>
     <td class="num">${q.xp ? q.xp.toLocaleString() : ''}${q.money ? '<br>' + money(q.money) : ''}</td>
     <td class="small">${giver(q)}${vars.map(v => giver(v) ? `<div class="muted">#${v.id}: ${giver(v)}</div>` : '').join('')}</td>
     <td class="small">${questChain(q, d.zone)}</td>
     <td>${questRewards(q)}</td><td class="small">${questRep(q)}</td><td class="small chg">${(q.chg || []).map(esc).join('<br>')}</td></tr>`).join('');
-  return h + '</tbody></table>';
+  return h + '</tbody></table>' + questieDungeonSections(d);
 }
 function bindDungeon() {
   const st = STATE.dq;
@@ -916,6 +934,132 @@ function pageCollected() {
     const lt = c.loot['Creature:' + id];
     return `<tr><td>${esc(r.n || '#' + id)}${r.cls && r.cls !== 'normal' ? ` <span class="muted small">${esc(r.cls)}</span>` : ''}</td><td class="num">${r.lmin ? (r.lmin === r.lmax ? r.lmin : r.lmin + '–' + r.lmax) : ''}</td><td>${esc(r.ct || '')}</td><td class="num">${r.seen}</td><td>${lt ? `${lt.items} items in ${lt.seen} loots` : ''}</td><td class="small muted">${r.pos && r.pos[0] ? r.pos.map(p => `${p.x}, ${p.y}`).join(' · ') : ''}</td></tr>`;
   }).join('')}</tbody></table>`).join('')}`;
+}
+
+/* ---------------------------------------------------------------- QuestieDB (Forever) data: quests, NPCs, objects, item sources */
+const QDB = window.FR_QUESTIE || {quests: {}, npcs: {}, objects: {}, items: {}};
+const RANK = {0: '', 1: 'Elite', 2: 'Rare Elite', 3: 'Boss', 4: 'Rare'};
+const RACE_A = 1 + 4 + 8 + 64, RACE_H = 2 + 16 + 32 + 128;
+const RACE_NAMES = {1: 'Human', 2: 'Orc', 4: 'Dwarf', 8: 'Night Elf', 16: 'Undead', 32: 'Tauren', 64: 'Gnome', 128: 'Troll'};
+const CLASS_BITS = {1: 'Warrior', 2: 'Paladin', 4: 'Hunter', 8: 'Rogue', 16: 'Priest', 64: 'Shaman', 128: 'Mage', 256: 'Warlock', 1024: 'Druid'};
+const REWARD_OF = {};   // quest -> [item]
+Object.keys(QDB.items).forEach(id => (QDB.items[id].rewardOf || []).forEach(q => (REWARD_OF[q] = REWARD_OF[q] || []).push(+id)));
+const ZONE_NAME = {};
+ZONES.zones.forEach(z => { ZONE_NAME[z.id] = z.n; });
+function questSide(q) {
+  const r = q.races || 0;
+  if (!r || r === 255 || (r & RACE_A && r & RACE_H)) return 'Both';
+  return r & RACE_H ? 'Horde' : 'Alliance';
+}
+function questLink(id, o) {
+  o = o || {};
+  const q = QDB.quests[id];
+  if (q) return `<a href="#/quest/${id}">${esc(q.n)}</a>${o.lv ? ` <span class="muted small">${q.lv}</span>` : ''}`;
+  const w = Object.values(QUESTS.dungeons).flatMap(d => d.quests).find(x => x.id === +id);
+  return w ? `<a href="#/dungeon/${QUEST_ZONE[id]}?hl=${id}">${esc(w.n)}</a>` : `<a class="ext" href="${WH}quest=${id}" target="_blank">quest #${id}</a>`;
+}
+function npcLink(id) {
+  const n = QDB.npcs[id];
+  return n ? `<a href="#/npc/${id}">${esc(n.n)}</a>` : `<a class="ext" href="${WH}npc=${id}" target="_blank">npc #${id}</a>`;
+}
+function objLink(id) {
+  const o = QDB.objects[id];
+  return o ? `<span title="object #${id}">${esc(o.n)}</span>` : `<a class="ext" href="${WH}object=${id}" target="_blank">object #${id}</a>`;
+}
+function itemLinkAny(id, o) {
+  if (ITEMS[id]) return itemLink(id, o);
+  const qi = QDB.items[id];
+  return qi ? `<a class="ext" href="${WH}item=${id}" target="_blank">${esc(qi.n)}</a>` : `<a class="ext" href="${WH}item=${id}" target="_blank">item #${id}</a>`;
+}
+function zoneLink(z) {
+  if (!z) return '';
+  if (z < 0) return `<span class="muted">sort ${z}</span>`;
+  const d = QUESTS.dungeons.find(x => x.zone === z);
+  if (d) return `<a href="#/dungeon/${z}">${esc(d.n)}</a>`;
+  return ZONE_NAME[z] ? `<a href="#/zone/${z}">${esc(ZONE_NAME[z])}</a>` : `zone ${z}`;
+}
+function spawnPins(spawns) {
+  /* one map per spawn zone that has art; dots at Questie's x/y percentages */
+  return Object.entries(spawns || {}).map(([z, pts]) => {
+    const mapId = MAP_BY_AREA[+z];
+    if (!mapId || !MAPS[mapId] || !MAPS[mapId].img) return `<p class="muted small">${esc(ZONE_NAME[z] || 'zone ' + z)}: ${pts.length} spawn point${pts.length > 1 ? 's' : ''} (no map art)</p>`;
+    const m = MAPS[mapId];
+    return `<h3>${esc(ZONE_NAME[z] || m.n)} <span class="muted small">${pts.length} spawn point${pts.length > 1 ? 's' : ''}</span></h3>
+      <div class="mapwrap" style="max-width:${m.w}px"><img src="maps/${mapId}.jpg" width="${m.w}" height="${m.h}" alt="">${pts.map(p => `<span class="pin" style="left:${p[0]}%;top:${p[1]}%" title="${p[0]}, ${p[1]}"></span>`).join('')}</div>`;
+  }).join('');
+}
+function pageQuest(id) {
+  const q = QDB.quests[id];
+  if (!q) return `<h1>Unknown quest</h1><p><a class="ext" href="${WH}quest=${id}" target="_blank">Wowhead Forever ↗</a></p>`;
+  const wq = Object.values(QUESTS.dungeons).flatMap(d => d.quests).find(x => x.id === +id);
+  const cq = COLLECT.quests[id];
+  const who = [];
+  if (q.races && q.races !== 255 && !((q.races & RACE_A) && (q.races & RACE_H))) who.push(Object.keys(RACE_NAMES).filter(b => q.races & b).map(b => RACE_NAMES[b]).join(', '));
+  if (q.classes) who.push(Object.keys(CLASS_BITS).filter(b => q.classes & b).map(b => CLASS_BITS[b]).join(', '));
+  const list = (title, ids, fn) => ids && ids.length ? `<h3>${title}</h3><ul>${ids.map(i => `<li>${fn(i)}</li>`).join('')}</ul>` : '';
+  const objs = q.objs || {};
+  let main = `<div class="panel"><div class="tt"><div class="name y">${esc(q.n)}</div><div>Level ${q.lv}${q.rl ? `, requires level ${q.rl}` : ''}</div>
+    <div class="two"><span>${questSide(q)}${who.length ? ' · ' + esc(who.join(' · ')) : ''}</span><span>${zoneLink(q.zone)}</span></div>
+    ${q.obj ? `<div class="desc" style="margin-top:6px">${esc(q.obj)}</div>` : ''}
+    ${(objs.c || objs.o || objs.i || objs.rep) ? `<div style="margin-top:6px"><b>Objectives</b><ul>${(objs.c || []).map(x => `<li>${npcLink(x[0])}${x[1] ? ' <span class="grey">' + esc(x[1]) + '</span>' : ' <span class="grey">slain</span>'}</li>`).join('')}${(objs.o || []).map(x => `<li>${objLink(x[0])}${x[1] ? ' <span class="grey">' + esc(x[1]) + '</span>' : ''}</li>`).join('')}${(objs.i || []).map(x => `<li>${itemLinkAny(x[0])}${x[1] ? ' <span class="grey">' + esc(x[1]) + '</span>' : ''}</li>`).join('')}${objs.rep ? `<li>${esc(QUESTS.factions[objs.rep[0]] || 'faction ' + objs.rep[0])} reputation ${objs.rep[1]}</li>` : ''}</ul></div>` : ''}
+    ${wq && wq.xp ? `<div class="grey">${wq.xp.toLocaleString()} XP${wq.money ? ', ' + money(wq.money) : ''}</div>` : ''}</div></div>`;
+  let side = '';
+  const st = q.start || {}, en = q.end || {};
+  side += `<h3>Start</h3><p>${[...(st.c || []).map(npcLink), ...(st.o || []).map(objLink), ...(st.i || []).map(i => itemLinkAny(i) + ' <span class="muted small">item</span>')].join('<br>') || '<span class="muted">unknown</span>'}</p>`;
+  side += `<h3>End</h3><p>${[...(en.c || []).map(npcLink), ...(en.o || []).map(objLink)].join('<br>') || '<span class="muted">unknown</span>'}</p>`;
+  const rewards = REWARD_OF[id] || [];
+  if (wq && (wq.rew || wq.choice)) side += `<h3>Rewards</h3><p>${questRewards(wq)}</p>`;
+  else if (rewards.length) side += list('Rewards', rewards, i => itemLinkAny(i));
+  if (q.rep) side += `<h3>Reputation</h3><p>${q.rep.map(r => `${esc(QUESTS.factions[r[0]] || 'faction ' + r[0])} <span class="muted">${r[1] > 0 ? '+' : ''}${r[1]}</span>`).join('<br>')}</p>`;
+  let chain = '';
+  if (q.pre) chain += `<p>Requires one of: ${q.pre.map(questLink).join(', ')}</p>`;
+  if (q.preg) chain += `<p>Requires all of: ${q.preg.map(questLink).join(', ')}</p>`;
+  if (q.parent) chain += `<p>Part of: ${questLink(q.parent)}</p>`;
+  if (q.next) chain += `<p>Next: ${questLink(q.next)}</p>`;
+  const followers = Object.keys(QDB.quests).filter(k => (QDB.quests[k].pre || []).includes(+id) || (QDB.quests[k].preg || []).includes(+id) || QDB.quests[k].parent === +id);
+  if (followers.length) chain += `<p>Leads to: ${followers.map(questLink).join(', ')}</p>`;
+  if (q.child) chain += `<p>Sub-quests: ${q.child.map(questLink).join(', ')}</p>`;
+  if (q.excl) chain += `<p class="muted">Exclusive with: ${q.excl.map(questLink).join(', ')}</p>`;
+  if (q.breadcrumbFor) chain += `<p class="muted">Breadcrumb for ${questLink(q.breadcrumbFor)}</p>`;
+  if (wq && wq.chain) chain += `<p>Wowhead series: ${questChain(wq, QUEST_ZONE[id])}</p>`;
+  if (cq && cq.prev) chain += `<p>Observed in-game: offered right after ${questLink(cq.prev)}</p>`;
+  if (chain) side += `<h3>Chain</h3>${chain}`;
+  if (q.skill) side += `<p class="muted small">Requires ${esc(M.skillLines[q.skill[0]] || 'skill ' + q.skill[0])} ${q.skill[1]}</p>`;
+  if (q.special & 1) side += '<p class="muted small">Repeatable</p>';
+  return `<h1>${esc(q.n)}${wq && wq.chg ? '<span class="badge mod" title="' + esc(wq.chg.join('; ')) + '">CHANGED</span>' : ''}</h1>
+  <p class="muted">quest #${id} &nbsp; <a class="ext" href="${WH}quest=${id}" target="_blank">Wowhead Forever ↗</a> &nbsp; <span class="small">data: QuestieDB${wq ? ' + Wowhead' : ''}${cq ? ' + collected' : ''}</span></p>
+  <div class="row"><div class="col">${main}</div><div class="col">${side}</div></div>`;
+}
+function pageNpc(id) {
+  const n = QDB.npcs[id];
+  if (!n) return `<h1>Unknown NPC</h1><p><a class="ext" href="${WH}npc=${id}" target="_blank">Wowhead Forever ↗</a></p>`;
+  const c = COLLECT.npcs[id];
+  const list = (title, ids, fn) => ids && ids.length ? `<h3>${title} <span class="muted small">${ids.length}</span></h3><ul>${ids.map(i => `<li>${fn(i)}</li>`).join('')}</ul>` : '';
+  const lv = n.lmin ? (n.lmin === n.lmax ? n.lmin : `${n.lmin}–${n.lmax}`) : '';
+  return `<h1>${esc(n.n)}${n.sub ? ` <span class="muted" style="font-size:16px">&lt;${esc(n.sub)}&gt;</span>` : ''}</h1>
+  <p class="muted">${lv ? 'Level ' + lv + ' ' : ''}${RANK[n.rank] || ''} ${n.friendly ? ' · friendly to ' + (n.friendly === 'AH' ? 'both' : n.friendly === 'H' ? 'Horde' : 'Alliance') : ''} ${n.zone ? ' · ' + zoneLink(n.zone) : ''} &nbsp; npc #${id} &nbsp; <a class="ext" href="${WH}npc=${id}" target="_blank">Wowhead Forever ↗</a>${c ? ` &nbsp; <span class="small">seen in-game ${c.seen}×${c.ct ? ', ' + esc(c.ct) : ''}</span>` : ''}</p>
+  <div class="row"><div class="col">${list('Starts quests', n.qs, questLink)}${list('Ends quests', n.qe, questLink)}${list('Drops', n.drops, i => itemLinkAny(i))}${list('Sells', n.sells, i => itemLinkAny(i))}</div>
+  <div class="col">${spawnPins(n.spawns) || (n.zone ? `<p class="muted">No outdoor spawn points recorded; located in ${zoneLink(n.zone)}.</p>` : '')}</div></div>`;
+}
+function questieItemSections(id) {
+  const qi = QDB.items[id];
+  if (!qi) return '';
+  const list = (title, ids, fn) => ids && ids.length ? `<h3>${title} <span class="muted small">QuestieDB</span></h3><ul>${ids.slice(0, 40).map(i => `<li>${fn(i)}</li>`).join('')}${ids.length > 40 ? `<li class="muted">…and ${ids.length - 40} more</li>` : ''}</ul>` : '';
+  const npcRow = i => { const n = QDB.npcs[i]; return npcLink(i) + (n && n.lmin ? ` <span class="muted small">${n.lmin === n.lmax ? n.lmin : n.lmin + '–' + n.lmax}${n.rank ? ' ' + RANK[n.rank] : ''}${n.zone ? ' · ' + esc(ZONE_NAME[n.zone] || '') : ''}</span>` : ''); };
+  let h = list('Dropped by', qi.drops, npcRow);
+  h += list('Contained in', qi.odrops, objLink);
+  h += list('Sold by', qi.vendors, npcRow);
+  if (qi.startQuest) h += `<h3>Starts quest</h3><p>${questLink(qi.startQuest)}</p>`;
+  h += list('Reward from', qi.rewardOf, i => questLink(i, {lv: true}));
+  return h;
+}
+function questieDungeonSections(d) {
+  const zone = d.zone;
+  const npcs = Object.keys(QDB.npcs).filter(id => QDB.npcs[id].zone === zone).map(id => [id, QDB.npcs[id]]).sort((a, b) => (b[1].rank || 0) - (a[1].rank || 0) || (b[1].lmax || 0) - (a[1].lmax || 0) || a[1].n.localeCompare(b[1].n));
+  if (!npcs.length) return '';
+  const rows = npcs.map(([id, n]) => `<tr><td>${npcLink(id)}${n.sub ? ` <span class="muted small">&lt;${esc(n.sub)}&gt;</span>` : ''}</td><td class="num">${n.lmin ? (n.lmin === n.lmax ? n.lmin : n.lmin + '–' + n.lmax) : ''}</td><td>${RANK[n.rank] || ''}</td>
+    <td class="small">${(n.drops || []).slice(0, 8).map(i => itemLinkAny(i, {noicon: true})).join(', ')}${(n.drops || []).length > 8 ? `, <a href="#/npc/${id}">+${n.drops.length - 8} more</a>` : ''}</td></tr>`);
+  return `<h2>NPCs <span class="muted small">${npcs.length}, from QuestieDB</span></h2><table><thead><tr><th>NPC</th><th>Level</th><th>Rank</th><th>Notable drops</th></tr></thead><tbody>${rows.join('')}</tbody></table>`;
 }
 
 const PATCHES = window.FR_PATCHES || [];
@@ -1000,6 +1144,8 @@ function render() {
     case 'bop': html = pageBop(); break;
     case 'dungeons': html = pageDungeons(); break;
     case 'collected': html = pageCollected(); break;
+    case 'quest': html = pageQuest(id); break;
+    case 'npc': html = pageNpc(id); break;
     case 'dungeon': html = pageDungeon(id, params); break;
     case 'maps': html = pageMaps(); break;
     case 'map': html = pageMap(id); break;
@@ -1010,6 +1156,7 @@ function render() {
   if (p === 'items') bindItems();
   if (p === 'class') bindClass();
   if (p === 'bop') bindBop();
+  if (p === 'zone') bindDungeon();
   if (p === 'dungeons' || p === 'dungeon') { bindDungeon(); if (p === 'dungeon' && path !== lastPath) STATE.dq.q = ''; const hlRow = params.hl && document.getElementById('q' + params.hl); if (hlRow) setTimeout(() => hlRow.scrollIntoView({block: 'center'}), 0); }
   if (path !== lastPath) { window.scrollTo(0, 0); lastPath = path; }
   $('#tip').hidden = true;

@@ -41,6 +41,16 @@ python ingest.py            # reads WTF/Account/*/SavedVariables/AlcCollect.lua,
 "Sold by"), on recipes (trainer and skill level) and on dungeon pages (givers, chain hints and
 quests Wowhead does not list).
 
+## QuestieDB (Forever)
+
+`questie.py --fetch` pulls the raw Forever tables from https://github.com/Questie/QuestieDB
+(`data/Forever/*.lua`, Classic content converted to Forever map coordinates) and writes
+`site/questie/questie.js`: quests with prerequisites and chains, NPCs with levels, ranks, spawn
+points and quest links, item drop / vendor / container sources, objects. The site uses it for
+quest pages (`#/quest/<id>`), NPC pages with spawn pins on the zone map (`#/npc/<id>`), item
+"Dropped by / Sold by / Contained in", dungeon NPC rosters and zone quest lists. Forever-new
+content is not in QuestieDB yet; AlcCollect fills that.
+
 ## Dungeon quests (Wowhead)
 
 `quests.py` builds the dungeon quest pages from Wowhead Forever's per-zone quest lists, which are
