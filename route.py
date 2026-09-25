@@ -161,8 +161,9 @@ def _pos_of(p):
 
 def load_forever_zones():
     wh = os.path.join(ROOT, 'harvest')   # tracked: the browser harvest lands in cache/wowhead and is copied here
-    npcpos_path = os.path.join(wh, 'npc-pos.json')
-    npcpos = json.load(open(npcpos_path, encoding='utf-8')) if os.path.exists(npcpos_path) else {}
+    npcpos = {}
+    for npcpos_path in sorted(glob.glob(os.path.join(wh, 'npc-pos*.json'))):   # one file per harvested zone
+        npcpos.update(json.load(open(npcpos_path, encoding='utf-8')))
     merged_path = os.path.join(ROOT, 'cache', 'collect', 'merged.json')
     collected = (json.load(open(merged_path, encoding='utf-8')).get('quests') or {}) if os.path.exists(merged_path) else {}
     for nid, rec in npcpos.items():
