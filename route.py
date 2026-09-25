@@ -77,6 +77,7 @@ def scan_rxp_classes():
     """Class restrictions from RestedXP gates: an `.accept <id>` inside `step << Shaman` (or with its own `<< Hunter`)
     marks the quest as that class's. Only positive class tokens count; negations and race/faction words are ignored."""
     out = {}
+    fac = {}   # quest -> set of faction words of the steps that accept it ('' = ungated)
     for fn in glob.glob(os.path.join(RXP, '*.lua')):
         src = open(fn, encoding='utf-8').read()
         for block in re.findall(r'RegisterGuide\(\[\[(.*?)\]\]', src, re.S):
@@ -94,10 +95,16 @@ def scan_rxp_classes():
                     classes = {t for t in re.split(r'[\s/]+', gate) if t in CLASS_NAMES}
                     if classes and not any(t.startswith('!') for t in gate.split()):
                         out.setdefault(int(m.group(1)), set()).update(classes)
-    return out
+                    toks = gate.split()
+                    fac.setdefault(int(m.group(1)), set()).add('Alliance' if 'Alliance' in toks and '/' not in gate else
+                                                               'Horde' if 'Horde' in toks and '/' not in gate else '')
+    alliance_only = {q for q, f in fac.items() if f == {'Alliance'}}
+    return out, alliance_only
 
 
-RXP_CLASS = scan_rxp_classes()   # quest -> set of class names (Wowhead's reqclass misses e.g. Call of Fire)
+# quest -> set of class names (Wowhead's reqclass misses e.g. Call of Fire); quests RestedXP only ever accepts in an
+# Alliance step (Wowhead marks some of those for both factions, e.g. The Cult's True Plans on Zephras Isle)
+RXP_CLASS, RXP_ALLIANCE = scan_rxp_classes()
 ARG = sys.argv
 START = ARG[ARG.index('--start') + 1] if '--start' in ARG else 'durotar'
 CLASS = ARG[ARG.index('--class') + 1] if '--class' in ARG else 'Warrior'
@@ -151,6 +158,7 @@ MAP_TO_AREA_EARLY = {m: a for a, m in AREA_TO_MAP.items()}
 # plannable like any Classic zone.
 FZ_ZONES = [16593]   # Zephras Isle
 FZXP = {}            # quest -> (level, xp) from Wowhead
+WH_SIDE = {}         # quest -> Wowhead side (1 Alliance, 2 Horde, 3 both) for harvested zones
 
 
 def _pos_of(p):
@@ -196,7 +204,8 @@ def load_forever_zones():
         n = 0
         for wq in json.load(open(lp, encoding='utf-8')):
             qid = wq['id']
-            if qid in Q or wq.get('side') not in (2, 3, 0): continue
+            WH_SIDE[qid] = wq.get('side')
+            if qid in Q or wq.get('side') not in (2, 3, 0) or qid in RXP_ALLIANCE: continue
             qi = info.get(str(qid)) or {}
             rec = {'n': wq['name'], 'lv': wq.get('level') or 0, 'rl': qi.get('rl') or wq.get('reqlevel') or 0, 'zone': area, 'fz': 1,
                    'races': RACE_H if wq.get('side') == 2 else 0, 'classes': wq.get('reqclass') or 0}
@@ -633,18 +642,27 @@ def plan(start=None):
         for pid in p['pre']:
             prereq_deadline[pid] = min(prereq_deadline.get(pid, 99), p['run'])
     # --- backbone; a Forever-new start zone is planned from our own data (RestedXP's isle guide only with --rxp-isle)
+    # Zephras Isle: RestedXP's guide gives the ORDER (it was walked by people and encodes which quest unlocks which;
+    # Wowhead's chains miss most of that), our harvest gives positions and objective pins, and the isle quests the
+    # guide leaves out or never hands in (its Horde 10-12 part is unfinished) are finished and filled in after it.
+    # --own-isle plans the isle from our data alone (order by XP per minute; no unlock knowledge).
     backbone = rxp_backbone(START)
-    if START == 'zephras' and '--rxp-isle' not in ARG and any(q.get('fz') for q in Q.values()):
-        backbone = [(n, g) for n, g in backbone if n != STARTS['zephras']]
+    isle_guide = STARTS['zephras'] if START == 'zephras' else None
+    if isle_guide and '--own-isle' in ARG and any(q.get('fz') for q in Q.values()):
+        backbone = [(n, g) for n, g in backbone if n != isle_guide]
         sim.steps.append({'t': 'guide', 'n': 'Zephras Isle (own plan)', 'src': 'planner: Wowhead quest data + AlcCollect positions'})
         sim.pos = (16593, 42.8, 23.4)   # Thendal village, where a Skyborne starts
         fill_zone(sim, 16593, pool, prereq_deadline)
+        isle_guide = None
     for name, g in backbone:
         sim.steps.append({'t': 'guide', 'n': name, 'src': 'RestedXP ' + g['file']})
         for st in g['steps']:
             if not gate_ok(st.get('gate', ''), START): continue   # class/race-gated RestedXP step (e.g. Paladin quests)
             if st['goto']: sim.pos = (None, st['goto'][1], st['goto'][2], st['goto'][0])
             here = sim.pos   # where RestedXP sends you for this step (annotate() turns it into a zone position)
+            # Alliance-only quests in an ungated step (RestedXP hands in Alliance's Confront Lorthuna in a shared step)
+            for key in ('accept', 'complete', 'turnin'):
+                st[key] = [q for q in st[key] if q not in RXP_ALLIANCE and WH_SIDE.get(q) != 1]
             for qid in st['accept']:
                 sim.active.add(qid)
                 sim.steps.append({'t': 'accept', 'q': qid, 'lv': sim.level, 'rxp': 1, 'rpos': here})
@@ -660,12 +678,22 @@ def plan(start=None):
                 sim.steps.append({'t': 'turnin', 'q': qid, 'lv': sim.level, 'xp': xp, 'rxp': 1, 'rpos': here})
                 sim.gain(xp + int(xp * KILL_XP_FRACTION), 'quest')
                 run_dungeons(sim, packages, prereq_deadline)
-            if st['xp'] and sim.level < st['xp']:
+            if st['xp'] and sim.level < st['xp'] and name != isle_guide:   # on the isle, a filler quest out of order breaks its unlocks
                 if sim.pos and len(sim.pos) == 4:   # backbone goto: (None, x, y, uiMapID) -> (area, x, y)
                     area = next((a for a, m in AREA_TO_MAP.items() if m == sim.pos[3]), None)
                     sim.pos = (area, sim.pos[1], sim.pos[2]) if area else None
                 fill_to(sim, st['xp'], pool, prereq_deadline, 'guide wants level %d' % st['xp'])
             run_dungeons(sim, packages, prereq_deadline)
+        if name == isle_guide:
+            # quests the guide accepts but never hands in (for Horde): do and hand them in, still on the isle
+            for qid in [q for q in list(sim.active) if (Q.get(q) or {}).get('zone') == 16593]:
+                sim.active.discard(qid); sim.done.add(qid)
+                xp = qxp(qid, sim.level)
+                sim.steps.append({'t': 'turnin', 'q': qid, 'lv': sim.level, 'xp': xp, 'filled': 1})
+                sim.gain(xp + int(xp * KILL_XP_FRACTION), 'quest')
+            # isle quests the guide never touches, by XP per minute from where it ends
+            sim.pos = sim.pos if (sim.pos and len(sim.pos) == 3 and sim.pos[0] == 16593) else (16593, 66.2, 76.6)
+            fill_zone(sim, 16593, pool, prereq_deadline, max_level=MAX_LEVEL, max_grinds=0)   # until the isle has nothing left
     sim.steps.append({'t': 'guide', 'n': 'Generated %d-60' % sim.level, 'src': 'planner'})
     # position after backbone: use the zone of the last turned-in quest
     last = next((s['q'] for s in reversed(sim.steps) if s.get('t') == 'turnin'), None)
