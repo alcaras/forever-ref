@@ -27,7 +27,7 @@ def fetch_rxp():
     depend on what is installed in the game: RXPGuides is deliberately kept out of AddOns (too many quest
     trackers at once), so the addon folder is only a fallback. Skipped with --no-fetch or when GitHub is down."""
     import urllib.request
-    if '--no-fetch' in ARG: return
+    if '--no-fetch' in sys.argv: return   # sys.argv: this runs before ARG is set
     os.makedirs(RXP_CACHE, exist_ok=True)
     tag = os.path.join(RXP_CACHE, '.commit')
     hdr = {'User-Agent': 'forever-ref', 'Accept': 'application/vnd.github+json'}
