@@ -49,6 +49,33 @@ window.FH = window.FH || { list: null, qi: {}, npc: {}, fail: [] };
       const sd = t.match(/Side:\s*(?:\[[^\]]*\])?([A-Za-z]+)/); if (sd) r.side = sd[1];
       const rl = t.match(/Requires level (\d+)/); if (rl) r.rl = +rl[1];
     }
+    // objective text: the plain text right after the <h1> title ("Collect 10 packs ... from Falaath Village ...")
+    const h1 = html.indexOf('<h1 class="heading-size-1">');
+    if (h1 >= 0) {
+      const txt = html.slice(h1, h1 + 4000).replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, '|').replace(/&nbsp;/g, ' ');
+      const parts = txt.split('|').map(s => s.trim()).filter(Boolean);
+      const obj = [];
+      for (const p of parts.slice(1)) { if (/^\d+$/.test(p) || p.startsWith('Relevant Locations') || p.startsWith('(')) break; obj.push(p); }
+      if (obj.length) r.obj = obj.join(' ').replace(/\s+/g, ' ').replace(/ \./g, '.').trim();
+    }
+    // objective pins: the page's Mapper config lists start/end and, when Wowhead knows them, objective points
+    const ms = html.indexOf('new Mapper(');
+    if (ms >= 0) {
+      const s = ms + 'new Mapper('.length;
+      let depth = 0, inStr = null, esc = false, j = s;
+      for (; j < html.length; j++) { const c = html[j];
+        if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === inStr) inStr = null; continue; }
+        if (c === '"' || c === "'") { inStr = c; continue; }
+        if (c === '{' || c === '[') depth++; else if (c === '}' || c === ']') { depth--; if (depth === 0) break; } }
+      try {
+        const cfg = JSON.parse(html.slice(s, j + 1)), pins = [];
+        for (const [zone, z] of Object.entries(cfg.objectives || {}))
+          for (const lvl of (z.levels || [])) for (const p of lvl)
+            if (p.point !== 'start' && p.point !== 'end')
+              pins.push({ zone: +zone, name: p.name || '', pts: (p.coords || []).slice(0, 8).map(c => [+(+c[0]).toFixed(1), +(+c[1]).toFixed(1)]) });
+        if (pins.length) r.pins = pins;
+      } catch (e) { /* no usable mapper config */ }
+    }
     const se = html.match(/<table class="series">([\s\S]*?)<\/table>/);
     if (se) {
       r.chain = se[1].split(/<tr[\s>]/).slice(1).map(row => {

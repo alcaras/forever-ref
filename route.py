@@ -117,6 +117,7 @@ MOUNT_LEVEL, MOUNT_SPEED = 40, 11.2
 ZONE_HOP = 240.0             # seconds for a zone change (flight or ride) on top of in-zone travel
 OBJECTIVE_TIME = {'c': 150.0, 'o': 60.0, 'i': 150.0, 'rep': 300.0}
 DUNGEON_TIME = 75 * 60.0
+BUNDLE_YARDS = 40.0          # quests whose givers stand this close are accepted in one visit
 DUNGEON_ZONE_ALIASES = {1584: [1584, 1585]}   # QuestieDB keys Blackrock Depths NPCs on 1585; Wowhead's zone is 1584
 
 # ---------------------------------------------------------------- data
@@ -157,6 +158,23 @@ def _pos_of(p):
     if not (isinstance(p, dict) and p.get('m') and p.get('x') is not None): return None
     area = MAP_TO_AREA_EARLY.get(int(p['m']))
     return (area, float(p['x']), float(p['y'])) if area else None
+
+
+def subzone_pos(text, area):
+    """((area, x, y), name) for the subzone of `area` named earliest in `text`, at the centre of its map rectangle."""
+    mid = AREA_TO_MAP.get(area)
+    m = MAPS.get(str(mid)) if mid else None
+    if not m: return None
+    low, best = text.lower(), None
+    for a in m.get('areas') or []:
+        name = ZNAME.get(a[0])
+        if not name or a[0] == area: continue
+        i = low.find(name.lower())
+        if i >= 0 and (best is None or i < best[0]):
+            best = (i, name, a)
+    if not best: return None
+    a = best[2]
+    return (area, round((a[1] + a[3]) / 2 * 100, 1), round((a[2] + a[4]) / 2 * 100, 1)), best[1]
 
 
 def load_forever_zones():
@@ -201,6 +219,19 @@ def load_forever_zones():
                 pts = [_pos_of(p) for p in ((o or {}).get('pos') or [])]
                 pts = [p for p in pts if p]
                 if pts: objs.append({'pos': pts[0], 'l': (o or {}).get('t') or '', 'k': 'c'})
+            if not objs:   # Wowhead's objective pins (kill / collect spots on the quest page's map)
+                for pin in qi.get('pins') or []:
+                    pts = pin.get('pts') or []
+                    if not pts: continue
+                    cx, cy = sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)
+                    px, py = min(pts, key=lambda p: (p[0] - cx) ** 2 + (p[1] - cy) ** 2)
+                    objs.append({'pos': (int(pin.get('zone') or area), px, py), 'l': pin.get('name') or '', 'k': 'c'})
+                objs = objs[:4]
+            obj_text = (qi.get('obj') or col.get('obj') or '').split(' Description ')[0]
+            if obj_text: rec['objtext'] = obj_text
+            if not objs and obj_text:   # no pins: the first subzone the objective names ("... from Falaath Village ...")
+                p = subzone_pos(obj_text, area)
+                if p: objs.append({'pos': p[0], 'l': p[1], 'k': 'a'})
             if objs: rec['fzobjs'] = objs
             Q[qid] = rec
             FZXP[qid] = (rec['lv'], wq.get('xp') or 0)
@@ -545,12 +576,27 @@ def pick_quest(sim, pool, prereq_deadline, relax=False, zone_only=False):
         return False if relax else pick_quest(sim, pool, prereq_deadline, relax=True, zone_only=zone_only)
     q = Q[best]
     sp, ep = quest_start_pos(q), quest_end_pos(q)
-    sim.steps.append({'t': 'accept', 'q': best, 'lv': sim.level, 'pos': sp})
-    xp = qxp(best, sim.level)
-    sim.done.add(best)
-    sim.steps.append({'t': 'turnin', 'q': best, 'lv': sim.level, 'xp': xp, 'pos': ep})
-    sim.gain(xp + int(xp * KILL_XP_FRACTION), 'quest')
-    sim.pos = ep
+    # take every other quest offered at the same spot along (a camp hands out several at once; players accept them
+    # together and do them in one outing): same zone, giver within BUNDLE_YARDS, not far above the player
+    batch = [best]
+    for qid in pool:
+        if len(batch) >= 5: break
+        if qid == best or not sim.available(qid): continue
+        oq = Q[qid]
+        if (oq.get('lv') or 0) > sim.level + 3 or qxp(qid, sim.level) <= 0: continue
+        osp = quest_start_pos(oq)
+        if not (osp and sp and osp[0] == sp[0]): continue
+        w, h = zone_size(sp[0])
+        if math.hypot((osp[1] - sp[1]) / 100.0 * w, (osp[2] - sp[2]) / 100.0 * h) <= BUNDLE_YARDS:
+            batch.append(qid)
+    for qid in batch:
+        sim.steps.append({'t': 'accept', 'q': qid, 'lv': sim.level, 'pos': quest_start_pos(Q[qid])})
+    for qid in batch:
+        xp = qxp(qid, sim.level)
+        sim.done.add(qid)
+        sim.steps.append({'t': 'turnin', 'q': qid, 'lv': sim.level, 'xp': xp, 'pos': quest_end_pos(Q[qid])})
+        sim.gain(xp + int(xp * KILL_XP_FRACTION), 'quest')
+    sim.pos = quest_end_pos(Q[batch[-1]])
     return True
 
 
@@ -760,7 +806,8 @@ with open(os.path.join(OUT, 'route.js'), 'w', encoding='utf-8') as f:
 ADDON_DIR = r'D:\addons\wow-addons\AlcRoute'
 if os.path.isdir(ADDON_DIR) and '--start' not in ARG and '--class' not in ARG:   # a filtered run must not overwrite the addon's full data
     def lstr(s):
-        return '"' + str(s).replace('\\', '\\\\').replace('"', '\\"') + '"'
+        s = ' '.join(str(s).split())   # labels from Wowhead pins can carry line breaks; a raw one ends a Lua string
+        return '"' + s.replace('\\', '\\\\').replace('"', '\\"') + '"'
     lines = ['-- GENERATED by forever-ref/route.py; do not edit. Class %s.' % CLASS, 'AlcRouteData = {', '  meta = { starts = { %s }, classes = { %s } },' % (', '.join(lstr(k) for k in STARTS), ', '.join(lstr(c) for c in sorted({c for _, c in ALL}))), '  dungeons = {']
     for p in packages:
         lines.append('    { zone = %d, n = %s, run = %d, quests = { %s }, pre = { %s } },' % (p['zone'], lstr(p['n']), p['run'], ', '.join(str(q) for q in p['own']), ', '.join(str(q) for q in sorted(p['pre']))))
