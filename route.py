@@ -70,6 +70,34 @@ def find_rxp():
 
 RXP = find_rxp()
 print('RestedXP guides:', RXP)
+CLASS_NAMES = {'Warrior', 'Paladin', 'Hunter', 'Rogue', 'Priest', 'Shaman', 'Mage', 'Warlock', 'Druid'}
+
+
+def scan_rxp_classes():
+    """Class restrictions from RestedXP gates: an `.accept <id>` inside `step << Shaman` (or with its own `<< Hunter`)
+    marks the quest as that class's. Only positive class tokens count; negations and race/faction words are ignored."""
+    out = {}
+    for fn in glob.glob(os.path.join(RXP, '*.lua')):
+        src = open(fn, encoding='utf-8').read()
+        for block in re.findall(r'RegisterGuide\(\[\[(.*?)\]\]', src, re.S):
+            name = re.search(r'^#name (.*)$', block, re.M)
+            name = name.group(1) if name else ''
+            ggate = ' '.join(c for c in CLASS_NAMES if c in name)   # "Skyborne Hunter Class Quests": the whole guide is that class's
+            parts = re.split(r'^(step(?: .*)?)$', block, flags=re.M)
+            for head, chunk in zip(parts[1::2], parts[2::2]):
+                hgate = head.split('<<', 1)[1] if '<<' in head else ggate
+                for line in chunk.splitlines():
+                    m = re.match(r'\s*\.accept (\d+)', line)
+                    if not m: continue
+                    gate = line.split('<<', 1)[1] if '<<' in line else hgate
+                    gate = gate.split('--')[0]
+                    classes = {t for t in re.split(r'[\s/]+', gate) if t in CLASS_NAMES}
+                    if classes and not any(t.startswith('!') for t in gate.split()):
+                        out.setdefault(int(m.group(1)), set()).update(classes)
+    return out
+
+
+RXP_CLASS = scan_rxp_classes()   # quest -> set of class names (Wowhead's reqclass misses e.g. Call of Fire)
 ARG = sys.argv
 START = ARG[ARG.index('--start') + 1] if '--start' in ARG else 'durotar'
 CLASS = ARG[ARG.index('--class') + 1] if '--class' in ARG else 'Warrior'
@@ -113,6 +141,73 @@ for d in WQ['dungeons']:
     for q in d['quests']:
         WHQ[q['id']] = dict(q, dungeon=d['zone'], dname=d['n'])
 AREA_TO_MAP = {m['area']: int(mid) for mid, m in MAPS.items() if m.get('area')}
+MAP_TO_AREA_EARLY = {m: a for a, m in AREA_TO_MAP.items()}
+
+# ---------------------------------------------------------------- Forever-new zones: our own data
+# QuestieDB has none of Forever's new quests. For zones harvested through the browser (cache/wowhead/zone-<area>.json
+# quest list, zone-<area>-info.json with start/end/chain per quest page, npc-pos.json) plus what AlcCollect saw in
+# game (cache/collect/merged.json: giver/ender/objective positions), synthetic Q and N entries make the zone
+# plannable like any Classic zone.
+FZ_ZONES = [16593]   # Zephras Isle
+FZXP = {}            # quest -> (level, xp) from Wowhead
+
+
+def _pos_of(p):
+    """AlcCollect position {m, x, y} -> (area, x, y) or None."""
+    if not (isinstance(p, dict) and p.get('m') and p.get('x') is not None): return None
+    area = MAP_TO_AREA_EARLY.get(int(p['m']))
+    return (area, float(p['x']), float(p['y'])) if area else None
+
+
+def load_forever_zones():
+    wh = os.path.join(ROOT, 'harvest')   # tracked: the browser harvest lands in cache/wowhead and is copied here
+    npcpos_path = os.path.join(wh, 'npc-pos.json')
+    npcpos = json.load(open(npcpos_path, encoding='utf-8')) if os.path.exists(npcpos_path) else {}
+    merged_path = os.path.join(ROOT, 'cache', 'collect', 'merged.json')
+    collected = (json.load(open(merged_path, encoding='utf-8')).get('quests') or {}) if os.path.exists(merged_path) else {}
+    for nid, rec in npcpos.items():
+        spawns = {z: pts for z, pts in rec.items() if z != '_n' and pts}
+        if int(nid) not in N and spawns:
+            N[int(nid)] = {'n': rec.get('_n', ''), 'zone': int(next(iter(spawns))), 'spawns': spawns}
+    for area in FZ_ZONES:
+        lp = os.path.join(wh, 'zone-%d.json' % area)
+        if not os.path.exists(lp): continue
+        ip = os.path.join(wh, 'zone-%d-info.json' % area)
+        info = json.load(open(ip, encoding='utf-8')) if os.path.exists(ip) else {}
+        n = 0
+        for wq in json.load(open(lp, encoding='utf-8')):
+            qid = wq['id']
+            if qid in Q or wq.get('side') not in (2, 3, 0): continue
+            qi = info.get(str(qid)) or {}
+            rec = {'n': wq['name'], 'lv': wq.get('level') or 0, 'rl': qi.get('rl') or wq.get('reqlevel') or 0, 'zone': area, 'fz': 1,
+                   'races': RACE_H if wq.get('side') == 2 else 0, 'classes': wq.get('reqclass') or 0}
+            for key in ('start', 'end'):
+                ref = qi.get(key)
+                if ref and ref[0] == 'npc': rec[key] = {'c': [ref[1]]}
+                elif ref and ref[0] == 'object': rec[key] = {'o': [ref[1]]}
+            chain = qi.get('chain') or []
+            for k, row in enumerate(chain):
+                if qid in row:
+                    if k > 0: rec['pre'] = list(chain[k - 1])
+                    if k + 1 < len(chain): rec['next'] = chain[k + 1][0]
+            col = collected.get(str(qid)) or {}
+            if _pos_of(col.get('gpos')): rec['fzstart'] = _pos_of(col['gpos'])
+            if _pos_of(col.get('epos')): rec['fzend'] = _pos_of(col['epos'])
+            ops = col.get('op') or {}
+            ops = ops.values() if isinstance(ops, dict) else ops
+            objs = []
+            for o in ops:
+                pts = [_pos_of(p) for p in ((o or {}).get('pos') or [])]
+                pts = [p for p in pts if p]
+                if pts: objs.append({'pos': pts[0], 'l': (o or {}).get('t') or '', 'k': 'c'})
+            if objs: rec['fzobjs'] = objs
+            Q[qid] = rec
+            FZXP[qid] = (rec['lv'], wq.get('xp') or 0)
+            n += 1
+        print('Forever zone %d: %d quests from Wowhead (%d with quest pages), %d NPC positions, %d seen in game' % (area, n, len(info), len(npcpos), sum(1 for q in Q.values() if q.get('fz') and (q.get('fzstart') or q.get('fzobjs')))))
+
+
+load_forever_zones()
 # zone size in yards from the client's UiMapAssignment regions
 ZONE_YARDS = {}
 for r in csv.DictReader(open(os.path.join(ROOT, 'cache', 'maps', 'UiMapAssignment.csv'), encoding='utf-8', newline='')):
@@ -132,6 +227,8 @@ def qxp(qid, level):
     """Quest XP at the player's level (Classic grey-out scaling)."""
     if qid in XP:
         qlvl, xp = XP[qid]
+    elif qid in FZXP and FZXP[qid][1]:
+        qlvl, xp = FZXP[qid]
     elif qid in WHQ and WHQ[qid].get('xp'):
         qlvl, xp = WHQ[qid].get('lv') or level, WHQ[qid]['xp']
     else:
@@ -150,9 +247,11 @@ def is_horde(q):
     return r == 0 or r == 255 or (r & RACE_H) != 0
 
 
-def class_ok(q):
+def class_ok(q, qid=None):
     c = q.get('classes') or 0
-    return c == 0 or (c & CLASS_BITS.get(CLASS, 0)) != 0
+    if c and not (c & CLASS_BITS.get(CLASS, 0)): return False
+    if qid in RXP_CLASS and CLASS not in RXP_CLASS[qid]: return False
+    return True
 
 
 def spawn_pos(rec, zone=None):
@@ -178,6 +277,7 @@ def npc_pos(nid, zone=None):
 def objective_targets(q):
     """Where the objectives of a quest are done: [{'pos': (zone, x, y), 'l': label, 'k': c|o|i}], in Questie order
     (kills, objects, items). Items resolve through the npcs/objects that drop them, in the quest's zone when possible."""
+    if q.get('fzobjs'): return list(q['fzobjs'])   # Forever-new quest: where the objective counters moved in game
     out = []
     zone = q.get('zone') if (q.get('zone') or 0) > 0 else None
     objs = q.get('objs') or {}
@@ -200,12 +300,20 @@ def quest_start_pos(q):
     st = q.get('start') or {}
     for c in st.get('c', []):
         p = npc_pos(c)
+        if p and p[1] != 50.0: return p
+    if q.get('fzstart'): return q['fzstart']   # where AlcCollect saw it accepted
+    for c in st.get('c', []):
+        p = npc_pos(c)
         if p: return p
     return (q.get('zone'), 50.0, 50.0) if (q.get('zone') or 0) > 0 else None
 
 
 def quest_end_pos(q):
     en = q.get('end') or {}
+    for c in en.get('c', []):
+        p = npc_pos(c)
+        if p and p[1] != 50.0: return p
+    if q.get('fzend'): return q['fzend']
     for c in en.get('c', []):
         p = npc_pos(c)
         if p: return p
@@ -397,7 +505,7 @@ class Sim:
 
 
 def build_pool(packages):
-    return [qid for qid, q in Q.items() if is_horde(q) and class_ok(q) and (q.get('zone') or 0) > 0 and not (q.get('special', 0) & 1)
+    return [qid for qid, q in Q.items() if is_horde(q) and class_ok(q, qid) and (q.get('zone') or 0) > 0 and not (q.get('special', 0) & 1)
             and q['zone'] not in {p['zone'] for p in packages} and not q.get('maxlv')]
 
 
@@ -411,10 +519,13 @@ def pick_quest(sim, pool, prereq_deadline, relax=False, zone_only=False):
         if xp <= 0: continue
         if not relax and (q.get('lv') or 0) > sim.level + 4: continue
         sp, ep = quest_start_pos(q), quest_end_pos(q)
-        if zone_only and not (sp and sim.pos and sp[0] == sim.pos[0]): continue
+        if zone_only:   # True: the zone we stand in; an area id: that zone (a turn-in elsewhere must not end the zone)
+            want = zone_only if zone_only is not True else (sim.pos and sim.pos[0])
+            if not (sp and want and sp[0] == want): continue
         cost = travel(sim.pos, sp, sim.level) + travel(sp, ep, sim.level) + 60.0
         for k, lst in (q.get('objs') or {}).items():
             cost += OBJECTIVE_TIME.get(k, 120.0) * (len(lst) if isinstance(lst, list) else 1)
+        if q.get('fz') and not q.get('objs'): cost += OBJECTIVE_TIME['c']   # objectives unknown: assume one kill/collect task
         for op in objective_positions(q)[:3]:
             cost += travel(sp, op, sim.level) * 0.5
         score = (xp * (1 + KILL_XP_FRACTION)) / cost
@@ -446,6 +557,19 @@ def fill_to(sim, target, pool, prereq_deadline, why):
         sim.steps.append({'t': 'note', 'msg': '%s: level %d wanted, %d reached with no quest left; kills will have to cover it' % (why, target, sim.level)})
 
 
+def fill_zone(sim, area, pool, prereq_deadline, max_level=14, max_grinds=2):
+    """Quest a zone dry: best XP-per-minute quest while any is available; when the remaining quests need one more
+    level, a short grind (at most max_grinds), otherwise leave."""
+    grinds = 0
+    while sim.level < max_level:
+        if pick_quest(sim, pool, prereq_deadline, zone_only=area): continue
+        nxt = [q for q in pool if Q[q].get('zone') == area and q not in sim.done and (Q[q].get('rl') or 0) == sim.level + 1]
+        if not nxt or grinds >= max_grinds: break
+        grinds += 1
+        sim.steps.append({'t': 'grind', 'lv': sim.level, 'to': sim.level + 1, 'zone': area})
+        sim.gain(max(XP_TO_NEXT[sim.level - 1] - sim.xp, 0), 'grind')
+
+
 def plan(start=None):
     global START
     if start: START = start
@@ -456,8 +580,14 @@ def plan(start=None):
     for p in packages:
         for pid in p['pre']:
             prereq_deadline[pid] = min(prereq_deadline.get(pid, 99), p['run'])
-    # --- backbone
-    for name, g in rxp_backbone(START):
+    # --- backbone; a Forever-new start zone is planned from our own data (RestedXP's isle guide only with --rxp-isle)
+    backbone = rxp_backbone(START)
+    if START == 'zephras' and '--rxp-isle' not in ARG and any(q.get('fz') for q in Q.values()):
+        backbone = [(n, g) for n, g in backbone if n != STARTS['zephras']]
+        sim.steps.append({'t': 'guide', 'n': 'Zephras Isle (own plan)', 'src': 'planner: Wowhead quest data + AlcCollect positions'})
+        sim.pos = (16593, 42.8, 23.4)   # Thendal village, where a Skyborne starts
+        fill_zone(sim, 16593, pool, prereq_deadline)
+    for name, g in backbone:
         sim.steps.append({'t': 'guide', 'n': name, 'src': 'RestedXP ' + g['file']})
         for st in g['steps']:
             if not gate_ok(st.get('gate', ''), START): continue   # class/race-gated RestedXP step (e.g. Paladin quests)
