@@ -9,7 +9,7 @@ greedily from QuestieDB (prerequisites, positions) and Wowhead (dungeon quest li
 
 Inputs (already produced by other scripts): cache/questie/{quests,npcs,items}.json, cache/questie/xpDB-classic.lua,
 site/quests/quests.js, site/maps/maps.js, cache/maps/UiMapAssignment.csv, RXPGuides Forever Horde guides.
-Output: site/route/route.js and a console summary.
+Output: cache/route/route.js (private, for analysis), RouteData.lua in the AlcRoute addon, and a console summary.
 
 Usage: python route.py [--start durotar|tirisfal|mulgore] [--class Warrior] [--mob-margin N]
 """
@@ -17,7 +17,7 @@ import csv, glob, json, math, os, re, sys
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 QC = os.path.join(ROOT, 'cache', 'questie')
-OUT = os.path.join(ROOT, 'site', 'route')
+OUT = os.path.join(ROOT, 'cache', 'route')   # private: the route ships only inside the AlcRoute addon
 os.makedirs(OUT, exist_ok=True)
 RXP = r'D:\Games\World of Warcraft\_classic_beta_\Interface\AddOns\RXPGuides\Guides\Forever'
 ARG = sys.argv
