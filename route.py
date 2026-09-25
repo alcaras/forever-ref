@@ -19,15 +19,48 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 QC = os.path.join(ROOT, 'cache', 'questie')
 OUT = os.path.join(ROOT, 'cache', 'route')   # private: the route ships only inside the AlcRoute addon
 os.makedirs(OUT, exist_ok=True)
+RXP_CACHE = os.path.join(ROOT, 'cache', 'rxp')
+
+
+def fetch_rxp():
+    """Sync RestedXP's free Forever guides (public GitHub repo, branch main) into cache/rxp. The planner must not
+    depend on what is installed in the game: RXPGuides is deliberately kept out of AddOns (too many quest
+    trackers at once), so the addon folder is only a fallback. Skipped with --no-fetch or when GitHub is down."""
+    import urllib.request
+    if '--no-fetch' in ARG: return
+    os.makedirs(RXP_CACHE, exist_ok=True)
+    tag = os.path.join(RXP_CACHE, '.commit')
+    hdr = {'User-Agent': 'forever-ref', 'Accept': 'application/vnd.github+json'}
+    def gj(url):
+        with urllib.request.urlopen(urllib.request.Request(url, headers=hdr), timeout=60) as r: return json.load(r)
+    try:
+        head = gj('https://api.github.com/repos/RestedXP/RXPGuides/commits/main')['sha']
+        if os.path.exists(tag) and open(tag).read().strip() == head and os.path.isfile(os.path.join(RXP_CACHE, 'RestedXP-Skyborne.lua')):
+            return
+        listing = [f for f in gj('https://api.github.com/repos/RestedXP/RXPGuides/contents/Guides/Forever?ref=' + head) if f['name'].endswith('.lua')]
+        for f in listing:
+            with urllib.request.urlopen(urllib.request.Request(f['download_url'], headers=hdr), timeout=60) as r: data = r.read()
+            open(os.path.join(RXP_CACHE, f['name']), 'wb').write(data)
+        keep = {f['name'] for f in listing}
+        for fn in os.listdir(RXP_CACHE):
+            if fn.endswith('.lua') and fn not in keep: os.remove(os.path.join(RXP_CACHE, fn))
+        open(tag, 'w').write(head)
+        print('RestedXP guides synced from GitHub: %d files at %s' % (len(listing), head[:8]))
+    except Exception as e:   # offline or rate-limited: use what is cached or installed
+        print('RestedXP guide sync skipped:', e)
+
+
 def find_rxp():
-    """RestedXP's Forever guides: the installed addon, else the newest set-aside / backup copy under
-    D:/addons/addon-backups (another session may have moved RXPGuides out of AddOns)."""
-    cands = [r'D:\Games\World of Warcraft\_classic_beta_\Interface\AddOns\RXPGuides\Guides\Forever']
+    """RestedXP's Forever guides: the GitHub-synced cache, else the installed addon, else the newest set-aside /
+    backup copy under D:/addons/addon-backups."""
+    fetch_rxp()
+    cands = [RXP_CACHE, r'D:\Games\World of Warcraft\_classic_beta_\Interface\AddOns\RXPGuides\Guides\Forever']
     cands += glob.glob(r'D:\addons\addon-backups\*\RXPGuides\Guides\Forever')
     cands = [c for c in cands if os.path.isfile(os.path.join(c, 'RestedXP-Skyborne.lua')) and glob.glob(os.path.join(c, 'Horde-*.lua'))]
     if not cands:
         sys.exit('RestedXP Forever guides not found (RXPGuides missing from AddOns and from D:/addons/addon-backups); reinstall with D:/addons/tools/update_addons.py --apply RXPGuides')
-    cands.sort(key=lambda c: os.path.getmtime(os.path.join(c, 'RestedXP-Skyborne.lua')), reverse=True)
+    if cands[0] != RXP_CACHE:   # no synced copy: take the newest of the rest
+        cands.sort(key=lambda c: os.path.getmtime(os.path.join(c, 'RestedXP-Skyborne.lua')), reverse=True)
     return cands[0]
 
 
