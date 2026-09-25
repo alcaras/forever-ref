@@ -19,7 +19,20 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 QC = os.path.join(ROOT, 'cache', 'questie')
 OUT = os.path.join(ROOT, 'cache', 'route')   # private: the route ships only inside the AlcRoute addon
 os.makedirs(OUT, exist_ok=True)
-RXP = r'D:\Games\World of Warcraft\_classic_beta_\Interface\AddOns\RXPGuides\Guides\Forever'
+def find_rxp():
+    """RestedXP's Forever guides: the installed addon, else the newest set-aside / backup copy under
+    D:/addons/addon-backups (another session may have moved RXPGuides out of AddOns)."""
+    cands = [r'D:\Games\World of Warcraft\_classic_beta_\Interface\AddOns\RXPGuides\Guides\Forever']
+    cands += glob.glob(r'D:\addons\addon-backups\*\RXPGuides\Guides\Forever')
+    cands = [c for c in cands if os.path.isfile(os.path.join(c, 'RestedXP-Skyborne.lua')) and glob.glob(os.path.join(c, 'Horde-*.lua'))]
+    if not cands:
+        sys.exit('RestedXP Forever guides not found (RXPGuides missing from AddOns and from D:/addons/addon-backups); reinstall with D:/addons/tools/update_addons.py --apply RXPGuides')
+    cands.sort(key=lambda c: os.path.getmtime(os.path.join(c, 'RestedXP-Skyborne.lua')), reverse=True)
+    return cands[0]
+
+
+RXP = find_rxp()
+print('RestedXP guides:', RXP)
 ARG = sys.argv
 START = ARG[ARG.index('--start') + 1] if '--start' in ARG else 'durotar'
 CLASS = ARG[ARG.index('--class') + 1] if '--class' in ARG else 'Warrior'
