@@ -204,6 +204,11 @@ def load_forever_zones():
             Q[qid] = rec
             FZXP[qid] = (rec['lv'], wq.get('xp') or 0)
             n += 1
+        # a quest that shares its name with a class-gated one is the same quest for another pet / totem / race variant
+        gated_names = {Q[q]['n']: cls for q, cls in RXP_CLASS.items() if q in Q}
+        for qid, q in Q.items():
+            if q.get('fz') and q['zone'] == area and not q.get('classes') and qid not in RXP_CLASS and q['n'] in gated_names:
+                RXP_CLASS[qid] = gated_names[q['n']]
         print('Forever zone %d: %d quests from Wowhead (%d with quest pages), %d NPC positions, %d seen in game' % (area, n, len(info), len(npcpos), sum(1 for q in Q.values() if q.get('fz') and (q.get('fzstart') or q.get('fzobjs')))))
 
 
