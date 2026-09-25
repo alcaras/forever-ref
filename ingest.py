@@ -89,22 +89,48 @@ def load_route_logs():
 
 
 def efficiency(events):
-    """Per quest: XP, minutes from accept to turn-in (overlapping quests share time, so this is an upper bound
-    on the true cost), XP per minute; per level: minutes and XP."""
-    per_quest, per_level = {}, {}
-    last_t = None
+    """Per quest: turn-in XP, minutes from accept to turn-in (overlapping quests share time, so this is an upper
+    bound on the true cost), XP per minute, plus everything gained while the quest was in the log (gx) per
+    active minute (ax). Per level: quest XP from turn-ins, and minutes / active minutes / quest-vs-kill split
+    from the level-up records (AlcRoute keeps per-level accumulators across sessions). Rate samples: the
+    addon's rolling XP/h every 10 minutes, summarised per level."""
+    per_quest, per_level, rates = {}, {}, {}
+
+    def lvrec(lv):
+        return per_level.setdefault(int(lv), {'xp': 0, 'quests': 0, 'min': 0.0, 'ax': 0.0, 'qx': 0, 'kx': 0})
+
     for e in sorted(events, key=lambda x: x.get('t') or 0):
-        if e.get('e') == 'turnin' and e.get('q'):
-            q = per_quest.setdefault(int(e['q']), {'n': 0, 'xp': 0, 'min': 0.0})
+        kind = e.get('e')
+        if kind == 'turnin' and e.get('q'):
+            q = per_quest.setdefault(int(e['q']), {'n': 0, 'xp': 0, 'min': 0.0, 'gx': 0, 'ax': 0.0})
             q['n'] += 1
             q['xp'] += e.get('xp') or 0
             if e.get('dt'):
                 q['min'] += min(e['dt'], 3 * 3600) / 60.0
-            lv = per_level.setdefault(int(e.get('lv') or 0), {'xp': 0, 'quests': 0})
+            q['gx'] += e.get('gx') or 0
+            q['ax'] += e.get('ax') or 0
+            lv = lvrec(e.get('lv') or 0)
             lv['xp'] += e.get('xp') or 0
             lv['quests'] += 1
-    return {'quests': {k: dict(v, xpm=round(v['xp'] / v['min'], 1) if v['min'] else None) for k, v in per_quest.items()},
-            'levels': per_level, 'events': len(events)}
+        elif kind == 'level' and e.get('to'):
+            lv = lvrec(int(e['to']) - 1)   # the level just finished
+            lv['min'] += (e.get('sec') or 0) / 60.0
+            lv['ax'] += e.get('ax') or 0
+            lv['qx'] += e.get('qx') or 0
+            lv['kx'] += e.get('kx') or 0
+        elif kind == 'rate' and e.get('xph'):
+            rates.setdefault(int(e.get('lv') or 0), []).append(e['xph'])
+    for v in per_level.values():
+        total = v['qx'] + v['kx']
+        v['xph'] = round(total / (v['ax'] / 60.0)) if v['ax'] >= 5 and total else None
+        v['kill'] = round(v['kx'] / total, 3) if total else None
+    rate_rows = []
+    for lv, xs in sorted(rates.items()):
+        xs.sort()
+        rate_rows.append({'lv': lv, 'n': len(xs), 'med': xs[len(xs) // 2], 'max': xs[-1]})
+    return {'quests': {k: dict(v, xpm=round(v['xp'] / v['min'], 1) if v['min'] else None,
+                               gxm=round(v['gx'] / v['ax'], 1) if v['ax'] >= 1 and v['gx'] else None) for k, v in per_quest.items()},
+            'levels': per_level, 'rates': rate_rows, 'events': len(events)}
 
 
 files = sys.argv[1:] or glob.glob(os.path.join(WTF, '*', 'SavedVariables', 'AlcCollect.lua'))

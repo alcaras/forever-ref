@@ -49,6 +49,8 @@ def loadjs(path, var):
 
 Q = {int(k): v for k, v in json.load(open(os.path.join(QC, 'quests.json'), encoding='utf-8')).items()}
 N = {int(k): v for k, v in json.load(open(os.path.join(QC, 'npcs.json'), encoding='utf-8')).items()}
+O = {int(k): v for k, v in json.load(open(os.path.join(QC, 'objects.json'), encoding='utf-8')).items()}
+I = {int(k): v for k, v in json.load(open(os.path.join(QC, 'items.json'), encoding='utf-8')).items()}
 WQ = loadjs(os.path.join(ROOT, 'site', 'quests', 'quests.js'), 'FR_QUESTS')
 MAPS = loadjs(os.path.join(ROOT, 'site', 'maps', 'maps.js'), 'FR_MAPS')['maps']
 ZONES = loadjs(os.path.join(ROOT, 'site', 'data', 'zones.js'), 'FR_ZONES')
@@ -103,16 +105,45 @@ def class_ok(q):
     return c == 0 or (c & CLASS_BITS.get(CLASS, 0)) != 0
 
 
-def npc_pos(nid):
-    n = N.get(nid)
-    if not n: return None
-    for z, pts in (n.get('spawns') or {}).items():
+def spawn_pos(rec, zone=None):
+    """(zone, x, y) of a spawn record: the spawn point nearest the centroid, preferring the given zone."""
+    if not rec: return None
+    sp = rec.get('spawns') or {}
+    keys = ([str(zone)] if zone and str(zone) in sp else []) + [z for z in sp if z != str(zone)]
+    for z in keys:
+        pts = sp.get(z)
         if pts:
-            xs = [p[0] for p in pts]; ys = [p[1] for p in pts]
-            return (int(z), sum(xs) / len(xs), sum(ys) / len(ys))
-    if n.get('zone'):
-        return (n['zone'], 50.0, 50.0)
+            cx, cy = sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)
+            p = min(pts, key=lambda p: (p[0] - cx) ** 2 + (p[1] - cy) ** 2)
+            return (int(z), p[0], p[1])
+    if rec.get('zone'):
+        return (rec['zone'], 50.0, 50.0)
     return None
+
+
+def npc_pos(nid, zone=None):
+    return spawn_pos(N.get(nid), zone)
+
+
+def objective_targets(q):
+    """Where the objectives of a quest are done: [{'pos': (zone, x, y), 'l': label, 'k': c|o|i}], in Questie order
+    (kills, objects, items). Items resolve through the npcs/objects that drop them, in the quest's zone when possible."""
+    out = []
+    zone = q.get('zone') if (q.get('zone') or 0) > 0 else None
+    objs = q.get('objs') or {}
+    for nid, text in objs.get('c', []):
+        p = npc_pos(nid, zone)
+        if p: out.append({'pos': p, 'l': text or N.get(nid, {}).get('n', ''), 'k': 'c'})
+    for oid, text in objs.get('o', []):
+        p = spawn_pos(O.get(oid), zone)
+        if p: out.append({'pos': p, 'l': text or O.get(oid, {}).get('n', ''), 'k': 'o'})
+    for iid, text in objs.get('i', []):
+        it = I.get(iid) or {}
+        cands = [npc_pos(n, zone) for n in (it.get('drops') or [])[:12]] + [spawn_pos(O.get(o), zone) for o in (it.get('odrops') or [])[:12]]
+        cands = [c for c in cands if c]
+        p = next((c for c in cands if c[0] == zone), cands[0] if cands else None)
+        if p: out.append({'pos': p, 'l': text or it.get('n', ''), 'k': 'i'})
+    return out
 
 
 def quest_start_pos(q):
@@ -132,11 +163,7 @@ def quest_end_pos(q):
 
 
 def objective_positions(q):
-    out = []
-    for x in (q.get('objs') or {}).get('c', []):
-        p = npc_pos(x[0])
-        if p: out.append(p)
-    return out
+    return [t['pos'] for t in objective_targets(q)]
 
 
 def travel(a, b, level):
@@ -293,7 +320,7 @@ class Sim:
     def __init__(self):
         self.level, self.xp = 1, 0
         self.pos = None
-        self.done, self.active = set(), set()
+        self.done, self.active, self.did = set(), set(), set()
         self.steps = []
         self.time = 0.0
 
@@ -381,13 +408,18 @@ def plan(start=None):
         for st in g['steps']:
             if not gate_ok(st.get('gate', ''), START): continue   # class/race-gated RestedXP step (e.g. Paladin quests)
             if st['goto']: sim.pos = (None, st['goto'][1], st['goto'][2], st['goto'][0])
+            here = sim.pos   # where RestedXP sends you for this step (annotate() turns it into a zone position)
             for qid in st['accept']:
                 sim.active.add(qid)
-                sim.steps.append({'t': 'accept', 'q': qid, 'lv': sim.level, 'rxp': 1})
+                sim.steps.append({'t': 'accept', 'q': qid, 'lv': sim.level, 'rxp': 1, 'rpos': here})
+            for qid in st['complete']:   # the guide's "do the objectives" step, with its own goto
+                if qid in sim.active and qid not in sim.did:
+                    sim.did.add(qid)
+                    sim.steps.append({'t': 'do', 'q': qid, 'lv': sim.level, 'rxp': 1, 'rpos': here})
             for qid in st['turnin']:
                 sim.active.discard(qid); sim.done.add(qid)
                 xp = qxp(qid, sim.level)
-                sim.steps.append({'t': 'turnin', 'q': qid, 'lv': sim.level, 'xp': xp, 'rxp': 1})
+                sim.steps.append({'t': 'turnin', 'q': qid, 'lv': sim.level, 'xp': xp, 'rxp': 1, 'rpos': here})
                 sim.gain(xp + int(xp * KILL_XP_FRACTION), 'quest')
                 run_dungeons(sim, packages, prereq_deadline)
             if st['xp'] and sim.level < st['xp']:
@@ -407,7 +439,28 @@ def plan(start=None):
             sim.steps.append({'t': 'note', 'msg': 'no quest available at level %d; route ends here' % sim.level})
             break
     run_dungeons(sim, packages, prereq_deadline)   # anything gated at the cap
+    sim.steps = add_do_steps(sim.steps)
     return sim, packages
+
+
+def add_do_steps(steps):
+    """Every quest gets a 'do' step (objectives) between accept and turn-in unless the guide supplied one
+    (.complete) or the quest is done inside a dungeon run."""
+    out, pending = [], set()
+    for s in steps:
+        t = s['t']
+        if t == 'accept' and not s.get('dungeon'): pending.add(s['q'])
+        elif t == 'do': pending.discard(s['q'])
+        elif t == 'turnin' and s['q'] in pending:
+            pending.discard(s['q'])
+            if not s.get('dungeon'):
+                d = {'t': 'do', 'q': s['q'], 'lv': s['lv']}
+                for k in ('rxp', 'forced'):
+                    if s.get(k): d[k] = s[k]
+                if s['q'] not in Q and s.get('rpos'): d['rpos'] = s['rpos']   # Forever-new quest: the guide's position is all we have
+                out.append(d)
+        out.append(s)
+    return out
 
 
 def force_quest(sim, qid, why, depth=0):
@@ -454,21 +507,43 @@ def run_dungeons(sim, packages, prereq_deadline):
         p['at'] = sim.level
 
 
+MAP_TO_AREA = {m: a for a, m in AREA_TO_MAP.items()}
+
+
+def rxp_pos(p):
+    """RestedXP goto -> (area, x, y): 4-tuples carry the uiMapID, 3-tuples are already zone positions."""
+    if not p: return None
+    if len(p) == 4:
+        area = MAP_TO_AREA.get(p[3])
+        return (area, p[1], p[2]) if area else None
+    return p if p[0] else None
+
+
 def annotate(sim):
+    """Names and positions. Known quests: QuestieDB giver / objectives / ender (a guide .complete goto wins for
+    the do step); Forever-new quests: the guide's goto. Planner-placed steps keep their position."""
     for s in sim.steps:
-        if s.get('q'):
-            qid = s['q']
-            s['n'] = Q[qid]['n'] if qid in Q else (WHQ.get(qid, {}).get('n') or RXP_NAMES.get(qid) or '#%d' % qid)
-            if qid not in Q and qid not in WHQ: s['est'] = 1
-            if qid in Q:
-                p = quest_start_pos(Q[qid]) if s['t'] == 'accept' else quest_end_pos(Q[qid])
-                if p and p[0] and p[0] > 0:
-                    s['zone'] = p[0]
-                    if 'pos' not in s: s['pos'] = p
-                elif (Q[qid].get('zone') or 0) > 0: s['zone'] = Q[qid]['zone']
-            elif s.get('pos') and len(s['pos']) == 4 and s['pos'][3]:   # RestedXP goto: uiMapID known, area unknown
-                area = next((a for a, m in AREA_TO_MAP.items() if m == s['pos'][3]), None)
-                if area: s['zone'] = area; s['pos'] = (area, s['pos'][1], s['pos'][2])
+        if not s.get('q'): continue
+        qid = s['q']
+        q = Q.get(qid)
+        s['n'] = q['n'] if q else (WHQ.get(qid, {}).get('n') or RXP_NAMES.get(qid) or '#%d' % qid)
+        if not q and qid not in WHQ: s['est'] = 1
+        rp = rxp_pos(s.pop('rpos', None))
+        p = s.get('pos') if (s.get('pos') and s['pos'][0]) else None
+        if not p and q:
+            if s['t'] == 'do':
+                targets = objective_targets(q)
+                if targets: s['obj'] = [[t['pos'][0], round(t['pos'][1], 1), round(t['pos'][2], 1), t['l'] or ''] for t in targets[:4]]
+                p = rp or (targets[0]['pos'] if targets else None) or quest_start_pos(q)
+            else:
+                p = (quest_start_pos(q) if s['t'] == 'accept' else quest_end_pos(q)) or rp
+        elif not p:
+            p = rp
+        if p and p[0] and p[0] > 0:
+            s['zone'] = p[0]; s['pos'] = p
+        else:
+            s.pop('pos', None)
+            if q and (q.get('zone') or 0) > 0: s['zone'] = q['zone']
 
 
 ALL = {}
@@ -525,6 +600,9 @@ if os.path.isdir(ADDON_DIR):
                 parts.append('zone = %d' % s['zone']); parts.append('n = %s' % lstr(s['n'])); parts.append('quests = { %s }' % ', '.join(str(q) for q in s['quests']))
             if t == 'grind':
                 parts.append('to = %d' % s['to'])
+            if t == 'do' and s.get('obj'):
+                objs = ['{ m = %d, x = %.1f, y = %.1f, l = %s }' % (AREA_TO_MAP[o[0]], o[1], o[2], lstr(o[3])) for o in s['obj'] if AREA_TO_MAP.get(o[0])]
+                if objs: parts.append('obj = { %s }' % ', '.join(objs))
             pos = s.get('pos')
             if pos and pos[0] and pos[0] > 0 and AREA_TO_MAP.get(pos[0]) and pos[1] is not None:
                 parts.append('m = %d' % AREA_TO_MAP[pos[0]]); parts.append('x = %.1f' % pos[1]); parts.append('y = %.1f' % pos[2]); parts.append('z = %s' % lstr(ZNAME.get(pos[0], ''))); parts.append('zid = %d' % pos[0])
