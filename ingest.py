@@ -76,12 +76,15 @@ def merge(into, db):
 # ---------------------------------------------------------------- AlcRoute logs -> quest efficiency
 def load_route_logs():
     out = []
-    for fn in glob.glob(os.path.join(WTF, '*', 'SavedVariables', 'AlcRoute.lua')):
+    # account-wide file (old layout) and per-character files (WTF/Account/<acct>/<realm>/<char>/SavedVariables)
+    for fn in glob.glob(os.path.join(WTF, '*', 'SavedVariables', 'AlcRoute.lua')) + glob.glob(os.path.join(WTF, '*', '*', '*', 'SavedVariables', 'AlcRoute.lua')):
         from lupa import lua51
         L = lua51.LuaRuntime()
         L.execute(open(fn, encoding='utf-8').read())
-        d = lua_to_py(L.globals().AlcRouteDB) or {}
-        out += [e for e in (d.get('log') or []) if isinstance(e, dict)]
+        g = L.globals()
+        for var in ('AlcRouteDB', 'AlcRouteChar'):
+            d = lua_to_py(g[var]) or {}
+            out += [e for e in (d.get('log') or []) if isinstance(e, dict)]
     return out
 
 

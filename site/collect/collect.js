@@ -1,1 +1,1 @@
-window.FR_COLLECT={"generated":"2026-09-24 14:28","chars":[],"eff":null,"drops":{},"sold":{},"trainers":{},"quests":{},"npcs":{},"vendors":{},"loot":{}};
+window.FR_COLLECT={"generated":"2026-09-24 17:19","chars":["Pay-Classic Beta PvE"],"eff":{"quests":{},"levels":{},"events":6},"drops":{},"sold":{},"trainers":{},"quests":{},"npcs":{"15686":{"seen":26,"n":"Auctioneer Rhyker","cls":"normal","ct":"Humanoid","r":5,"lmin":50,"lmax":50,"pos":[{"m":1458,"x":60.7,"i":"Eastern Kingdoms","y":46.9}]}},"vendors":{},"loot":{}};

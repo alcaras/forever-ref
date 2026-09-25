@@ -205,6 +205,33 @@ def dungeon_packages():
 
 # ---------------------------------------------------------------- RestedXP backbone
 RXP_NAMES = {}   # quest names from RestedXP step text, for Forever-new quests unknown to QuestieDB/Wowhead
+START_RACES = {'durotar': {'Orc', 'Troll'}, 'mulgore': {'Tauren'}, 'tirisfal': {'Undead'}, 'zephras': {'Skyborne'}}
+
+
+def gate_ok(gate, start):
+    """RestedXP `<< gate` grammar: alternatives split by '/', tokens inside one alternative are ANDed,
+    '!' negates, 'skip' always fails, '--' starts a comment. Evaluated for CLASS, Horde and the start's
+    race(s); a step passes when it passes for any race of the start (Durotar serves Orc and Troll)."""
+    gate = gate.split('--')[0].strip()
+    if not gate:
+        return True
+    if gate.lower() == 'skip':
+        return False
+    for race in START_RACES.get(start, set()):
+        me = {CLASS, 'Horde', race}
+        for alt in gate.split('/'):
+            ok = True
+            for tok in alt.split():
+                neg = tok.startswith('!')
+                tok = tok.lstrip('!')
+                if tok.startswith('#'):
+                    continue
+                if (tok in me) == neg:
+                    ok = False
+                    break
+            if ok:
+                return True
+    return False
 STARTS = {'durotar': '1-6 Durotar', 'tirisfal': '1-6 Tirisfal Glades', 'mulgore': '1-6 Mulgore', 'zephras': '1-14 Zephras Isle'}
 
 
@@ -217,10 +244,17 @@ def rxp_backbone(start):
             if not name: continue
             nxt = re.findall(r'^#next (.*)$', block, re.M)
             steps = []
-            for chunk in re.split(r'^step\b.*$', block, flags=re.M)[1:]:
-                st = {'goto': None, 'accept': [], 'turnin': [], 'complete': [], 'xp': None, 'text': ''}
+            parts = re.split(r'^(step(?: .*)?)$', block, flags=re.M)
+            for head, chunk in zip(parts[1::2], parts[2::2]):
+                st = {'goto': None, 'accept': [], 'turnin': [], 'complete': [], 'xp': None, 'text': '',
+                      'gate': head.split('<<', 1)[1] if '<<' in head else ''}
                 for line in chunk.splitlines():
                     line = line.strip()
+                    if '<<' in line:   # line-level gate: drop the line when it is not for us
+                        line, lgate = line.split('<<', 1)
+                        line = line.strip()
+                        if not gate_ok(lgate, start):
+                            continue
                     m = re.match(r'\.goto (\d+),([\d.]+),([\d.]+)', line)
                     if m and not st['goto']: st['goto'] = (int(m.group(1)), float(m.group(2)), float(m.group(3)))
                     m = re.match(r'\.accept (\d+)(?:\s*>>\s*Accept (.*))?', line)
@@ -247,8 +281,7 @@ def rxp_backbone(start):
         for raw in guides[order[-1]]['next']:
             cand = raw.split('<<')[0].strip().split(';')[0].strip()
             gate = raw.split('<<')[1] if '<<' in raw else ''
-            if gate and ('!' + CLASS) in gate: continue
-            if gate and '!' not in gate and CLASS not in gate and 'Skyborne' not in gate: continue
+            if not gate_ok(gate, start): continue
             if cand in guides: cur = cand; break
         if cur is None and '12-17 The Barrens' in guides and '12-17 The Barrens' not in order and order[-1] not in ('17-22 Stonetalon/Barrens/Ashenvale',):
             cur = '12-17 The Barrens'   # guides without a usable #next (Zephras Isle) continue with the Barrens
@@ -346,6 +379,7 @@ def plan(start=None):
     for name, g in rxp_backbone(START):
         sim.steps.append({'t': 'guide', 'n': name, 'src': 'RestedXP ' + g['file']})
         for st in g['steps']:
+            if not gate_ok(st.get('gate', ''), START): continue   # class/race-gated RestedXP step (e.g. Paladin quests)
             if st['goto']: sim.pos = (None, st['goto'][1], st['goto'][2], st['goto'][0])
             for qid in st['accept']:
                 sim.active.add(qid)
