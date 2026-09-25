@@ -182,6 +182,10 @@ def dungeon_packages():
     for d in WQ['dungeons']:
         if d['kind'] != 'dungeon' or d.get('nodata'): continue
         own = [q for q in d['quests'] if q['side'] in (2, 3, 0)]
+        # a quest Questie does not know that shares its name with one it does is a dead duplicate (Wailing Caverns
+        # lists 3366 and 6981 "The Glowing Shard"; only 6981 can be had, 3366 blocked AlcRoute, 2026-09-25)
+        known_names = {q.get('n') for q in own if q['id'] in Q}
+        own = [q for q in own if q['id'] in Q or q.get('n') not in known_names]
         if not own: continue
         pre, seen = {}, {q['id'] for q in own}
 
@@ -415,7 +419,9 @@ def plan(start=None):
             for qid in st['complete']:   # the guide's "do the objectives" step; its goto counts only when it is the step's own
                 if qid in sim.active and qid not in sim.did:
                     sim.did.add(qid)
-                    sim.steps.append({'t': 'do', 'q': qid, 'lv': sim.level, 'rxp': 1, 'rpos': here if st['goto'] else None})
+                    # own goto: best position; no goto: the previous goto still beats nothing for a Forever-new quest,
+                    # while a QuestieDB quest gets its objective spawns in annotate()
+                    sim.steps.append({'t': 'do', 'q': qid, 'lv': sim.level, 'rxp': 1, 'rpos': here if (st['goto'] or qid not in Q) else None})
             for qid in st['turnin']:
                 sim.active.discard(qid); sim.done.add(qid)
                 xp = qxp(qid, sim.level)
