@@ -412,10 +412,10 @@ def plan(start=None):
             for qid in st['accept']:
                 sim.active.add(qid)
                 sim.steps.append({'t': 'accept', 'q': qid, 'lv': sim.level, 'rxp': 1, 'rpos': here})
-            for qid in st['complete']:   # the guide's "do the objectives" step, with its own goto
+            for qid in st['complete']:   # the guide's "do the objectives" step; its goto counts only when it is the step's own
                 if qid in sim.active and qid not in sim.did:
                     sim.did.add(qid)
-                    sim.steps.append({'t': 'do', 'q': qid, 'lv': sim.level, 'rxp': 1, 'rpos': here})
+                    sim.steps.append({'t': 'do', 'q': qid, 'lv': sim.level, 'rxp': 1, 'rpos': here if st['goto'] else None})
             for qid in st['turnin']:
                 sim.active.discard(qid); sim.done.add(qid)
                 xp = qxp(qid, sim.level)
