@@ -37,9 +37,13 @@ def fetch_rxp():
         head = gj('https://api.github.com/repos/RestedXP/RXPGuides/commits/main')['sha']
         if os.path.exists(tag) and open(tag).read().strip() == head and os.path.isfile(os.path.join(RXP_CACHE, 'RestedXP-Skyborne.lua')):
             return
-        listing = [f for f in gj('https://api.github.com/repos/RestedXP/RXPGuides/contents/Guides/Forever?ref=' + head) if f['name'].endswith('.lua')]
+        # the repo has both Guides/Forever (Skyborne) and Guides/forever (Horde/Alliance); Windows merges them, GitHub does not
+        tree = gj('https://api.github.com/repos/RestedXP/RXPGuides/git/trees/%s?recursive=1' % head)['tree']
+        listing = [{'name': x['path'].split('/')[-1], 'path': x['path']} for x in tree
+                   if x['type'] == 'blob' and x['path'].lower().startswith('guides/forever/') and x['path'].endswith('.lua')]
         for f in listing:
-            with urllib.request.urlopen(urllib.request.Request(f['download_url'], headers=hdr), timeout=60) as r: data = r.read()
+            url = 'https://raw.githubusercontent.com/RestedXP/RXPGuides/%s/%s' % (head, urllib.request.quote(f['path']))
+            with urllib.request.urlopen(urllib.request.Request(url, headers=hdr), timeout=60) as r: data = r.read()
             open(os.path.join(RXP_CACHE, f['name']), 'wb').write(data)
         keep = {f['name'] for f in listing}
         for fn in os.listdir(RXP_CACHE):
