@@ -57,7 +57,7 @@ Questie + QuestieDB addons from the newest GitHub bundle release.
 ## Leveling route (route.py)
 
 `python route.py [--start durotar|tirisfal|mulgore] [--class Warrior] [--mob-margin N]` writes
-`RouteData.lua` into the AlcRoute addon (`D:ddons\wow-addons\AlcRoute`) and a private `cache/route/route.js`; the route is not published on the site. Policy: a Horde 5-man runs each dungeon exactly once,
+`RouteData.lua` into the AlcRoute addon (`D:/addons/wow-addons/AlcRoute`) and a private `cache/route/route.js`; the route is not published on the site. Policy: a Horde 5-man runs each dungeon exactly once,
 at the first level where every quest for it (and every prerequisite) can be held and the mobs are
 doable (`max(gate level, lowest mob level + margin)`). Prerequisite chains are pulled forward before
 that level. Levels 1–22 follow RestedXP's free Forever Horde guides (parsed from the installed addon);
