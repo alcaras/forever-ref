@@ -382,7 +382,8 @@ function gearTable(rows, opts) {
     const g = groups.get(k).sort((a, b) => (a.it.rl || 0) - (b.it.rl || 0) || a.it.it - b.it.it || a.it.n.localeCompare(b.it.n));
     const lv = g.map(r => r.it.rl || 0), lo = Math.min(...lv), hi = Math.max(...lv);
     const bop = g.filter(r => r.it.b === 1).length;
-    h += `<tr class="cat"><td colspan="${GEAR_COLS.length}">${esc(k)} <span class="muted small">(${g.length} item${g.length > 1 ? 's' : ''}, level ${lo === hi ? lo : lo + '–' + hi}${bop && bop !== g.length ? `, ${bop} BoP` : ''})</span></td></tr>`;
+    const stats = sortStats([...new Set(g.flatMap(r => (r.it.s || []).map(s => s[0])))].map(st => [st])).map(s => STAT_LABEL[s[0]] || M.stats[s[0]] || 'Stat ' + s[0]);   // every stat kind anywhere in the group
+    h += `<tr class="cat"><td colspan="${GEAR_COLS.length}">${esc(k)} <span class="muted small">(${g.length} item${g.length > 1 ? 's' : ''}, level ${lo === hi ? lo : lo + '–' + hi}${bop && bop !== g.length ? `, ${bop} BoP` : ''})</span>${stats.length ? ` <span class="small">${stats.map(esc).join(', ')}</span>` : ''}</td></tr>`;
     h += g.map(r => `<tr>${GEAR_COLS.map(c => `<td class="${c.num ? 'num' : ''}">${c.r(r)}</td>`).join('')}</tr>`).join('');
   });
   return h + '</tbody>';
