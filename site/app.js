@@ -364,8 +364,17 @@ const GEAR_COLS = [
 ];
 function gearTable(rows, opts) {
   opts = opts || {};
+  /* coarse groups: "Veteran's Chain" and "Veteran's Silvered Chain" join "Veteran's" (a possessive first word is the set name),
+     and any group joins a shorter group whose name is a whole-word prefix of it, unless that prefix is just "Robe of" / "Idol of the" */
+  const raw = [...new Set(rows.map(r => r.g))];
+  const coarse = k => {
+    const first = k.split(' ')[0];
+    if (k !== first && /('s|s')$/.test(first)) return first;
+    const pre = raw.filter(o => k.startsWith(o + ' ') && !/ (of|the|and)$/i.test(o)).sort((a, b) => a.length - b.length)[0];
+    return pre || k;
+  };
   const groups = new Map();
-  rows.forEach(r => { if (!groups.has(r.g)) groups.set(r.g, []); groups.get(r.g).push(r); });
+  rows.forEach(r => { const k = coarse(r.g); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
   const minLv = k => Math.min(...groups.get(k).map(r => r.it.rl || 0));
   const keys = [...groups.keys()].sort((a, b) => (a === 'Non-equippable') - (b === 'Non-equippable') || minLv(a) - minLv(b) || a.localeCompare(b));
   let h = (opts.head ? '<thead><tr>' + GEAR_COLS.map(c => `<th>${c.h}</th>`).join('') + '</tr></thead>' : '') + '<tbody>';
