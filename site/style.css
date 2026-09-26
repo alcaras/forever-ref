@@ -139,3 +139,11 @@ ul.prep-inside { list-style: none; padding: 0; }
 ul.prep-inside li { padding: 6px 0; border-bottom: 1px solid var(--line); }
 ul.prep-inside label { cursor: pointer; }
 @media (max-width: 700px) { .prep-stop { flex-direction: column; } .prepmap { max-width: none !important; } }
+.prep-group { margin: 8px 0 0; padding: 6px 10px 4px; border-left: 3px solid #4a5060; border-radius: 4px; background: #1a1d24; }
+.prep-group.chain { border-left-color: var(--gold); }
+.prep-group .prep-quests { margin-top: 4px; }
+.prep-tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; vertical-align: 1px; }
+.prep-tag.chain { background: var(--gold); color: #000; }
+.prep-tag.solo { background: #3a4050; color: #dde; }
+.prep-stepno { font-size: 11px; color: var(--gold); font-weight: 600; }
+.prep-next { margin: 0 0 4px; color: #cfc6a8; }

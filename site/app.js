@@ -973,12 +973,12 @@ function prepQuest(id) {
   const seen = cq && cq.xp != null && (cq.ender || cq.xp > 0);   /* a corpse or object turn-in records no ender */
   return {n, w, link, ext: !q && !w, rl: (w && w.rl) || (q && q.rl) || 0, xp: seen ? cq.xp : fxp(w), seen};
 }
-function prepQuestLine(id, text) {
+function prepQuestLine(id, text, step) {
   const p = prepQuest(id);
   const xpText = p.seen ? (p.xp ? `<span title="What the game gave when you turned it in (AlcCollect)">${p.xp.toLocaleString()} XP ✓</span>` : '<span title="Turned in with AlcCollect running: no XP">no XP ✓</span>') : p.xp ? `${p.xp.toLocaleString()} XP` : '';
   const bits = [p.rl ? `needs ${p.rl}` : '', xpText].filter(Boolean).join(' · ');
   const rew = p.w && (p.w.rew || p.w.choice) ? `<div class="prep-rew">${questRewards(p.w).replace(/<br>/g, ' ')}</div>` : '';
-  return `<li><a href="${p.link}"${p.ext ? ' target="_blank" class="ext"' : ''}><b>${esc(p.n)}</b></a>${bits ? ` <span class="muted small">${bits}</span>` : ''}<div class="small">${esc(text || '')}</div>${rew}</li>`;
+  return `<li>${step ? `<span class="prep-stepno">step ${step}</span> ` : ''}<a href="${p.link}"${p.ext ? ' target="_blank" class="ext"' : ''}><b>${esc(p.n)}</b></a>${bits ? ` <span class="muted small">${bits}</span>` : ''}<div class="small">${esc(text || '')}</div>${rew}</li>`;
 }
 function pagePrep(zone) {
   const g = PREP[zone];
@@ -996,17 +996,42 @@ function pagePrep(zone) {
     <div class="tile"><div><b>${horde.length}</b><div class="sub">Horde quests with XP in this dungeon</div></div></div>
     ${total ? `<div class="tile"><div><b>${total.toLocaleString()}</b><div class="sub">XP for all of them on Forever (dungeon quests give about 3x their Classic XP)</div></div></div>` : ''}</div>
     <p class="small"><b>Entrance:</b> ${esc(g.entrance.t)}${g.entrance.area ? ` <span class="muted">(${place(g.entrance.area, g.entrance.x, g.entrance.y)})</span>` : ''}</p></div>`;
+  /* which chain (and step) each quest belongs to; quests in no chain are one-offs */
+  const chainOf = {};
+  (g.chains || []).forEach((c, ci) => c.steps.forEach((st, si) => { chainOf[st.q] = {c, ci, si}; }));
+  const stepWhere = st => st.inside ? 'in the dungeon' : (ZONE_NAME[st.area] || '');
+  const stopQuests = picks => {
+    const groups = [];
+    picks.forEach(p => {
+      const ch = chainOf[p.q], last = groups[groups.length - 1];
+      if (ch && last && last.ch && last.ch.ci === ch.ci) last.items.push(p); else groups.push({ch, items: [p]});
+    });
+    return groups.map(gr => {
+      if (!gr.ch) return `<div class="prep-group solo"><span class="prep-tag solo" title="Not part of a chain: pick it up, do it, hand it in">one-off</span><ul class="prep-quests">${gr.items.map(p => prepQuestLine(p.q, p.t)).join('')}</ul></div>`;
+      const c = gr.ch.c, first = gr.ch.si, lastSi = chainOf[gr.items[gr.items.length - 1].q].si, n = c.steps.length;
+      const next = c.steps[lastSi + 1];
+      return `<div class="prep-group chain"><span class="prep-tag chain">chain</span> <b>${esc(c.name)}</b> <span class="muted small">${first === lastSi ? `step ${first + 1}` : `steps ${first + 1}–${lastSi + 1}`} of ${n}</span>
+        <ul class="prep-quests">${gr.items.map(p => prepQuestLine(p.q, p.t, chainOf[p.q].si + 1)).join('')}</ul>
+        ${next ? `<div class="small prep-next">then step ${lastSi + 2}: ${esc(next.n || prepQuest(next.q).n)} <span class="prep-where">${esc(stepWhere(next))}</span></div>` : '<div class="small prep-next">last step of the chain</div>'}</div>`;
+    }).join('');
+  };
   /* 1: the pickup route */
-  h += `<h2><span class="prep-num">1</span> Before you go: pick these up</h2><ol class="prep-stops">${g.stops.map((s, i) => `<li class="prep-stop">
+  h += `<h2><span class="prep-num">1</span> Before you go: pick these up</h2>
+  <p class="small muted"><span class="prep-tag chain">chain</span> quests lead into each other (do them in order); <span class="prep-tag solo">one-off</span> quests stand alone.</p>
+  <ol class="prep-stops">${g.stops.map((s, i) => `<li class="prep-stop">
     <div class="prep-stop-text"><div class="prep-stop-head"><span class="prep-step">${i + 1}</span> <b>${esc(s.title)}</b>${s.optional ? ' <span class="badge mod" title="One quest there; worth it if you pass by">detour</span>' : ''}</div>
       <div class="muted small">${esc(s.where)} · ${place(s.area, s.x, s.y)}</div>
-      <ul class="prep-quests">${s.pick.map(p => prepQuestLine(p.q, p.t)).join('')}</ul>
+      ${stopQuests(s.pick)}
       ${s.then ? `<p class="small prep-then">→ ${esc(s.then)}</p>` : ''}</div>
     ${prepMap(s.area, [[s.x, s.y]], 260)}</li>`).join('')}</ol>`;
   /* chains */
-  if (g.chains && g.chains.length) h += `<h2>The chains, step by step</h2>${g.chains.map(c => `<div class="prep-chain"><h3>${esc(c.name)}</h3><ol>${c.steps.map(st => {
+  /* the one-offs: every quest of the guide that is in no chain */
+  const solo = [...new Set([...g.stops.flatMap(s => s.pick.map(p => p.q)), ...g.inside.map(x => x.q)])].filter(q => !chainOf[q]);
+  if (g.chains && g.chains.length) h += `<h2>Chains: quests that lead into each other</h2>${g.chains.map(c => `<div class="prep-chain"><h3><span class="prep-tag chain">chain</span> ${esc(c.name)} <span class="muted small">${c.steps.length} steps</span></h3><ol>${c.steps.map(st => {
       const p = prepQuest(st.q);
       return `<li class="${st.inside ? 'inside' : ''}"><a href="${p.link}"${p.ext ? ' target="_blank"' : ''}>${esc(st.n || p.n)}</a> <span class="prep-where">${st.inside ? 'in the dungeon' : esc(ZONE_NAME[st.area] || '')}</span><div class="small">${esc(st.t)}</div></li>`; }).join('')}</ol></div>`).join('')}`;
+  if (solo.length) h += `<div class="prep-chain"><h3><span class="prep-tag solo">one-off</span> Everything else stands alone <span class="muted small">${solo.length} quests</span></h3><ul>${solo.map(q => { const p = prepQuest(q);
+    return `<li><a href="${p.link}"${p.ext ? ' target="_blank"' : ''}>${esc(p.n)}</a></li>`; }).join('')}</ul></div>`;
   /* 2: inside */
   h += `<h2><span class="prep-num">2</span> In the dungeon</h2><ul class="prep-inside">${g.inside.map(x => { const p = prepQuest(x.q);
     return `<li><label><input type="checkbox"> <b>${esc(p.n)}</b></label><div class="small">${esc(x.t)}</div></li>`; }).join('')}</ul>`;
