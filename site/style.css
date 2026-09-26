@@ -115,3 +115,27 @@ h4 { margin: 12px 0 4px; font-size: 13px; color: var(--muted); text-transform: u
 @media (max-width: 800px) { .zones ul { columns: 1; } .search { max-width: none; } }
 tr:has(+ tr.chain-next) td { border-bottom-color: transparent; }
 tr.chain-next td:first-child { padding-left: 18px; }
+/* dungeon prep guides (#/prep/<zone>) */
+.prep-callout { margin: 6px 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-left: 3px solid var(--gold); border-radius: 6px; background: #1a1d24; }
+.prep-summary { padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: #15181e; margin: 10px 0 18px; }
+.prep-summary p { margin: 6px 0; }
+.prep-num { display: inline-block; width: 26px; height: 26px; line-height: 26px; text-align: center; border-radius: 50%; background: var(--gold); color: #000; font-size: 15px; margin-right: 6px; }
+ol.prep-stops { list-style: none; padding: 0; margin: 0; }
+.prep-stop { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; padding: 12px 14px; margin: 0 0 10px; border: 1px solid var(--line); border-radius: 8px; background: #15181e; }
+.prep-stop-text { flex: 1 1 auto; min-width: 0; }
+.prep-stop-head { font-size: 16px; }
+.prep-step { display: inline-block; min-width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 50%; border: 1px solid var(--gold); color: var(--gold); font-size: 13px; }
+.prep-quests { margin: 8px 0 0; padding-left: 18px; }
+.prep-quests li { margin: 0 0 8px; }
+.prep-rew { font-size: 12px; margin-top: 2px; }
+.prep-then { margin: 6px 0 0; color: #cfc6a8; }
+.prepmap { flex: 0 0 auto; width: 100%; margin: 0; }
+.prep-chain ol { padding-left: 22px; }
+.prep-chain li { margin: 0 0 6px; }
+.prep-chain li.inside { color: var(--gold); }
+.prep-chain li.inside a { color: var(--gold); font-weight: 600; }
+.prep-where { font-size: 11px; padding: 1px 6px; border-radius: 8px; border: 1px solid var(--line); color: #aab; margin-left: 4px; }
+ul.prep-inside { list-style: none; padding: 0; }
+ul.prep-inside li { padding: 6px 0; border-bottom: 1px solid var(--line); }
+ul.prep-inside label { cursor: pointer; }
+@media (max-width: 700px) { .prep-stop { flex-direction: column; } .prepmap { max-width: none !important; } }

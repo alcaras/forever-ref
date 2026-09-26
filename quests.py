@@ -171,6 +171,33 @@ def wowhead_zone(kind, i):
             return 0
         time.sleep(0.5)
     return start_zone[key]
+# Forever multiplies the XP of dungeon-type quests (about 2.9-3.2x; other quests 1x). The zone listviews carry the base
+# XP; each quest page's setupScalingRewards has the multiplier. Cached in cache/wowhead/quest-scaling.json as
+# {id: [level, base xp, multiplier]}; `xm` on a quest when it is not 1.
+sc_path = os.path.join(ROOT, 'cache', 'wowhead', 'quest-scaling.json')
+scaling = json.load(open(sc_path, encoding='utf-8')) if os.path.exists(sc_path) else {}
+todo = sorted({q['id'] for d in dungeons for q in d['quests'] if str(q['id']) not in scaling})
+for n, qid in enumerate(todo):
+    try:
+        h = urllib.request.urlopen(urllib.request.Request(f'https://www.wowhead.com/forever/quest={qid}', headers={'User-Agent': 'Mozilla/5.0 forever-ref'}), timeout=30).read().decode('utf-8', 'replace')
+        m = re.search(r'setupScalingRewards\((\{.*?\})\);', h)
+        sd = json.loads(m.group(1)) if m else {}
+        lv = sd.get('minLevel')
+        scaling[str(qid)] = [lv, ((sd.get('xp') or {}).get('levels') or {}).get(str(lv)), (sd.get('xp') or {}).get('multiplier')]
+    except Exception as ex:
+        print('  scaling failed', qid, ex)
+        if '403' in str(ex) or '429' in str(ex):
+            break   # rate limited: keep what we have, the next run continues
+    if n % 25 == 24:
+        json.dump(scaling, open(sc_path, 'w', encoding='utf-8'))
+        print(f'  scaling {n + 1}/{len(todo)}', flush=True)
+    time.sleep(0.8)
+json.dump(scaling, open(sc_path, 'w', encoding='utf-8'))
+for d in dungeons:
+    for q in d['quests']:
+        s = scaling.get(str(q['id']))
+        if s and s[2] and s[2] != 1:
+            q['xm'] = s[2]
 for d in dungeons:
     for q in d['quests']:
         for s in q.get('start') or []:

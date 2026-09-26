@@ -795,6 +795,9 @@ function pageMap(id) {
 const QUESTS = window.FR_QUESTS || {dungeons: [], factions: {}};
 const QTYPE = {0: '', 1: 'Group', 21: 'Life', 41: 'PvP', 62: 'Raid', 81: 'Dungeon', 82: 'World Event', 83: 'Legendary', 84: 'Escort', 85: 'Heroic', 88: 'Raid', 89: 'Raid'};
 const SIDE = {0: ['Unknown', 'side-b'], 1: ['Alliance', 'side-a'], 2: ['Horde', 'side-h'], 3: ['Both', 'side-b']};
+/* Forever XP: the zone lists carry the base XP; dungeon-type quests get a multiplier (xm, about 3x) on Forever */
+function fxp(q) { return q && q.xp ? Math.round(q.xp * (q.xm || 1)) : 0; }
+function fxpCell(q) { return q && q.xp ? (q.xm ? `<span title="Forever gives ${q.xm}x on this quest; base ${q.xp.toLocaleString()} XP">${fxp(q).toLocaleString()}</span>` : q.xp.toLocaleString()) : ''; }
 function questSideOk(q, want) { return want === 'all' || !q.side || q.side === 3 || q.side === (want === 'horde' ? 2 : 1); }   /* side 0: Wowhead has no faction flag, show everywhere */
 function questRewards(q) {
   const item = r => {
@@ -860,7 +863,7 @@ function pageDungeons() {
     const qs = d.quests.filter(q => questSideOk(q, st.side));
     const lv = qs.map(q => q.lv).filter(Boolean);
     const p = dungeonPackage(d, st.side);
-    return `<tr><td><a href="#/dungeon/${d.zone}">${esc(d.n)}</a>${d.nodata ? ' <span class="muted small">no quest data on Wowhead yet</span>' : ''}</td>
+    return `<tr><td><a href="#/dungeon/${d.zone}">${esc(d.n)}</a>${PREP[d.zone] ? ` <a class="badge new" href="#/prep/${d.zone}" title="Step-by-step: which quests to pick up where">PREP GUIDE</a>` : ''}${d.nodata ? ' <span class="muted small">no quest data on Wowhead yet</span>' : ''}</td>
       <td class="num">${qs.length}</td><td class="num">${lv.length ? Math.min(...lv) + '–' + Math.max(...lv) : ''}</td><td class="num"><b>${p.ready || ''}</b></td><td class="num">${p.pre.length || ''}</td>
       <td class="small">${[...new Set(qs.map(q => q.n))].slice(0, 4).map(esc).join(', ')}${new Set(qs.map(q => q.n)).size > 4 ? ', …' : ''}</td></tr>`;
   };
@@ -906,8 +909,7 @@ function pageDungeon(zone, params) {
   }).concat(collected);
   const qs = withCollected.filter(q => questSideOk(q, st.side) && (!st.q || q.n.toLowerCase().includes(st.q.toLowerCase())));
   const mapId = Object.keys(MAPS).find(id => MAPS[id].n === d.n || MAPS[id].area === d.zone);
-  let h = `<h1>${esc(d.n)}</h1><p class="muted">${d.kind === 'raid' ? 'Raid' : 'Dungeon'} &nbsp; <a class="ext" href="${WH}zone=${d.zone}#quests" target="_blank">Wowhead Forever ↗</a>${d.guide ? ` &nbsp; <a class="ext" href="${esc(d.guide)}" target="_blank">Mobalytics guide ↗</a>` : ''}${mapId ? ` &nbsp; <a href="#/map/${mapId}">map</a>` : ''}</p>
-  <div class="filters">${sideFilter(st.side)}<input id="dq-q" placeholder="Filter quests" value="${esc(st.q)}"><span class="muted small">${qs.length} quests</span></div>`;
+  let h = `<h1>${esc(d.n)}</h1><p class="muted">${d.kind === 'raid' ? 'Raid' : 'Dungeon'} &nbsp; <a class="ext" href="${WH}zone=${d.zone}#quests" target="_blank">Wowhead Forever ↗</a>${d.guide ? ` &nbsp; <a class="ext" href="${esc(d.guide)}" target="_blank">Mobalytics guide ↗</a>` : ''}${mapId ? ` &nbsp; <a href="#/map/${mapId}">map</a>` : ''}</p>${PREP[d.zone] ? `<p class="prep-callout"><a href="#/prep/${d.zone}"><b>Quests to pick up before you go →</b></a> <span class="muted small">a step-by-step route: who gives what, where, the chains, what to do inside</span></p>` : ''}  <div class="filters">${sideFilter(st.side)}<input id="dq-q" placeholder="Filter quests" value="${esc(st.q)}"><span class="muted small">${qs.length} quests</span></div>`;
   if (d.nodata && !qs.length) return h + '<p class="muted">Wowhead has no quest list for this instance yet.</p>' + questieDungeonSections(d);
   if (!qs.length) return h + '<p class="muted">No quests for this faction.</p>' + questieDungeonSections(d);
   const hl = +(st.hl || 0);
@@ -945,13 +947,72 @@ function pageDungeon(zone, params) {
   h += `<table><thead><tr><th>Quest</th><th>Level</th><th>Req</th><th>Side</th><th>XP</th><th title="Where the quest is picked up: the quest giver's zone, or where its starting item drops">Zone</th><th>Start → End</th><th>Chain</th><th>Rewards</th><th>Reputation</th><th>Forever changes</th></tr></thead><tbody>`;
   h += rows.map(({main: q, vars, next}) => `<tr id="q${q.id}" class="${q.id === hl ? 'hl' : ''}${next ? ' chain-next' : ''}"><td>${next ? '<span class="muted" title="next step of the chain above">↳</span> ' : ''}${QDB.quests[q.id] ? `<a href="#/quest/${q.id}">${esc(q.n)}</a>` : `<a href="${WH}quest=${q.id}" target="_blank">${esc(q.n)}</a>`} <span class="muted small">#${q.id}${who(q) ? ' · ' + esc(who(q)) : ''}</span>${q.col ? ' <span class="badge new" title="Recorded in-game by AlcCollect; not on Wowhead">COLLECTED</span>' : ''}${q.qdb ? ' <span class="badge mod" title="From QuestieDB; not in Wowhead\'s zone list">QUESTIE</span>' : ''}${q.guide ? ' <span class="badge mod" title="Named by the dungeon guide; Wowhead does not list it under this zone">GUIDE</span>' : ''}${q.after ? `<div class="muted small">offered after <a href="${WH}quest=${q.after}" target="_blank">#${q.after}</a></div>` : ''}${QTYPE[q.type] && q.type !== 81 ? ` <span class="muted small">${QTYPE[q.type]}</span>` : ''}${vars.length ? `<div class="muted small">${vars.length + 1} variants: ${[q].concat(vars).map(v => `<a href="${WH}quest=${v.id}" target="_blank">#${v.id}</a>${who(v) ? ' (' + esc(who(v)) + ')' : ''}`).join(', ')}</div>` : ''}</td>
     <td class="num">${q.lv || ''}</td><td class="num">${q.rl || ''}</td><td><span class="${(SIDE[q.side] || ['', ''])[1]}" ${q.inf ? 'title="Wowhead has no faction flag; inferred from the quest NPC"' : ''}>${(SIDE[q.side] || ['?'])[0]}${q.inf ? '*' : ''}</span></td>
-    <td class="num">${q.xp ? q.xp.toLocaleString() : ''}${q.money ? '<br>' + money(q.money) : ''}</td>
+    <td class="num">${fxpCell(q)}${q.money ? '<br>' + money(q.money) : ''}</td>
     <td class="small">${questFromCell([q].concat(vars), d)}</td>
     <td class="small">${giver(q)}${vars.map(v => giver(v) ? `<div class="muted">#${v.id}: ${giver(v)}</div>` : '').join('')}</td>
     <td class="small">${questChain(q, d.zone)}</td>
     <td>${questRewards(q)}</td><td class="small">${questRep(q)}</td><td class="small chg">${(q.chg || []).map(esc).join('<br>')}</td></tr>`).join('');
   return h + '</tbody></table>' + prepSection(d, st.side) + questieDungeonSections(d);
 }
+/* ---------------------------------------------------------------- dungeon quest prep guides (guides/prep.js, hand-written, Horde) */
+const PREP = window.FR_PREP || {};
+const WQ = {};
+QUESTS.dungeons.forEach(d => d.quests.forEach(q => { WQ[q.id] = q; }));
+function prepMap(area, pins, width) {
+  const mapId = MAP_BY_AREA[area];
+  const m = mapId && MAPS[mapId];
+  if (!m || !m.img) return '';
+  return `<a class="mapwrap prepmap" href="#/map/${mapId}" style="max-width:${width || 300}px" title="${esc(m.n)}"><img src="maps/${mapId}.jpg" width="${m.w}" height="${m.h}" alt="${esc(m.n)}" loading="lazy">${pins.map(p => `<span class="pin" style="left:${p[0]}%;top:${p[1]}%"></span>`).join('')}</a>`;
+}
+function prepQuest(id) {
+  const w = WQ[id], q = QDB.quests[id];
+  const n = (w && w.n) || (q && q.n) || '#' + id;
+  const link = q ? `#/quest/${id}` : w ? `#/dungeon/${QUEST_ZONE[id]}?hl=${id}` : `${WH}quest=${id}`;
+  return {n, w, link, ext: !q && !w, rl: (w && w.rl) || (q && q.rl) || 0, xp: fxp(w)};
+}
+function prepQuestLine(id, text) {
+  const p = prepQuest(id);
+  const bits = [p.rl ? `needs ${p.rl}` : '', p.xp ? `${p.xp.toLocaleString()} XP` : ''].filter(Boolean).join(' · ');
+  const rew = p.w && (p.w.rew || p.w.choice) ? `<div class="prep-rew">${questRewards(p.w).replace(/<br>/g, ' ')}</div>` : '';
+  return `<li><a href="${p.link}"${p.ext ? ' target="_blank" class="ext"' : ''}><b>${esc(p.n)}</b></a>${bits ? ` <span class="muted small">${bits}</span>` : ''}<div class="small">${esc(text || '')}</div>${rew}</li>`;
+}
+function pagePrep(zone) {
+  const g = PREP[zone];
+  const d = QUESTS.dungeons.find(x => x.zone === +zone);
+  if (!g) return `<h1>No prep guide yet</h1><p class="muted">Guides exist for ${Object.entries(PREP).map(([z, x]) => `<a href="#/prep/${z}">${esc(x.n)}</a>`).join(', ')}.</p>`;
+  const place = (area, x, y) => `${esc(ZONE_NAME[area] || '')}${x != null ? ` <span class="muted">${x}, ${y}</span>` : ''}`;
+  /* the dungeon's Horde quests and their total XP, for the summary */
+  const horde = d ? d.quests.filter(q => questSideOk(q, 'horde') && q.xp) : [];
+  const total = horde.reduce((s, q) => s + fxp(q), 0);
+  let h = `<p class="muted small"><a href="#/dungeons">Dungeon quests</a> › <a href="#/dungeon/${zone}">${esc(g.n)}</a> › prep guide</p>
+  <h1>${esc(g.n)}: quests to pick up</h1>
+  <p class="muted">Horde. Where to pick up each quest, in a sensible order, what to do inside, and where to hand them in.</p>
+  <div class="prep-summary"><p>${esc(g.summary)}</p>
+    <div class="tiles"><div class="tile"><div><b>${esc(g.level.split('. ').pop().replace(/\.$/, ''))}</b><div class="sub">${esc(g.level.split('. ').slice(0, -1).join('. '))}</div></div></div>
+    <div class="tile"><div><b>${horde.length}</b><div class="sub">Horde quests with XP in this dungeon</div></div></div>
+    ${total ? `<div class="tile"><div><b>${total.toLocaleString()}</b><div class="sub">XP for all of them on Forever (dungeon quests give about 3x their Classic XP)</div></div></div>` : ''}</div>
+    <p class="small"><b>Entrance:</b> ${esc(g.entrance.t)}${g.entrance.area ? ` <span class="muted">(${place(g.entrance.area, g.entrance.x, g.entrance.y)})</span>` : ''}</p></div>`;
+  /* 1: the pickup route */
+  h += `<h2><span class="prep-num">1</span> Before you go: pick these up</h2><ol class="prep-stops">${g.stops.map((s, i) => `<li class="prep-stop">
+    <div class="prep-stop-text"><div class="prep-stop-head"><span class="prep-step">${i + 1}</span> <b>${esc(s.title)}</b>${s.optional ? ' <span class="badge mod" title="One quest there; worth it if you pass by">detour</span>' : ''}</div>
+      <div class="muted small">${esc(s.where)} · ${place(s.area, s.x, s.y)}</div>
+      <ul class="prep-quests">${s.pick.map(p => prepQuestLine(p.q, p.t)).join('')}</ul>
+      ${s.then ? `<p class="small prep-then">→ ${esc(s.then)}</p>` : ''}</div>
+    ${prepMap(s.area, [[s.x, s.y]], 260)}</li>`).join('')}</ol>`;
+  /* chains */
+  if (g.chains && g.chains.length) h += `<h2>The chains, step by step</h2>${g.chains.map(c => `<div class="prep-chain"><h3>${esc(c.name)}</h3><ol>${c.steps.map(st => {
+      const p = prepQuest(st.q);
+      return `<li class="${st.inside ? 'inside' : ''}"><a href="${p.link}"${p.ext ? ' target="_blank"' : ''}>${esc(st.n || p.n)}</a> <span class="prep-where">${st.inside ? 'in the dungeon' : esc(ZONE_NAME[st.area] || '')}</span><div class="small">${esc(st.t)}</div></li>`; }).join('')}</ol></div>`).join('')}`;
+  /* 2: inside */
+  h += `<h2><span class="prep-num">2</span> In the dungeon</h2><ul class="prep-inside">${g.inside.map(x => { const p = prepQuest(x.q);
+    return `<li><label><input type="checkbox"> <b>${esc(p.n)}</b></label><div class="small">${esc(x.t)}</div></li>`; }).join('')}</ul>`;
+  /* 3: turn in */
+  h += `<h2><span class="prep-num">3</span> Hand them in</h2><ol class="prep-stops">${g.after.map(a => `<li class="prep-stop"><div class="prep-stop-text"><b>${esc(a.title)}</b> <span class="muted small">${place(a.area, a.x, a.y)}</span><div class="small">${esc(a.t)}</div></div>${prepMap(a.area, [[a.x, a.y]], 200)}</li>`).join('')}</ol>`;
+  if (g.tips && g.tips.length) h += `<h2>Tips</h2><ul>${g.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>`;
+  h += `<p class="muted small" style="margin-top:20px">Sources: Wowhead Forever quest and NPC pages (starters, objectives, chains, coordinates), QuestieDB (prerequisites, drops), <a class="ext" href="${esc(g.guide)}" target="_blank">the Mobalytics guide</a> (tips, in-dungeon spots); researched 2026-09-26. The <a href="#/dungeon/${zone}">full quest table</a> lists every quest with rewards.</p>`;
+  return h;
+}
+
 function bindDungeon() {
   const st = STATE.dq;
   document.querySelectorAll('a[data-side]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); st.side = a.dataset.side; render(); }));
@@ -1073,7 +1134,7 @@ function pageQuest(id) {
     <div class="two"><span>${questSide(q)}${who.length ? ' · ' + esc(who.join(' · ')) : ''}</span><span>${zoneLink(q.zone)}</span></div>
     ${q.obj ? `<div class="desc" style="margin-top:6px">${esc(q.obj)}</div>` : ''}
     ${(objs.c || objs.o || objs.i || objs.rep) ? `<div style="margin-top:6px"><b>Objectives</b><ul>${(objs.c || []).map(x => `<li>${npcLink(x[0])}${x[1] ? ' <span class="grey">' + esc(x[1]) + '</span>' : ' <span class="grey">slain</span>'}</li>`).join('')}${(objs.o || []).map(x => `<li>${objLink(x[0])}${x[1] ? ' <span class="grey">' + esc(x[1]) + '</span>' : ''}</li>`).join('')}${(objs.i || []).map(x => `<li>${itemLinkAny(x[0])}${x[1] ? ' <span class="grey">' + esc(x[1]) + '</span>' : ''}</li>`).join('')}${objs.rep ? `<li>${esc(QUESTS.factions[objs.rep[0]] || 'faction ' + objs.rep[0])} reputation ${objs.rep[1]}</li>` : ''}</ul></div>` : ''}
-    ${wq && wq.xp ? `<div class="grey">${wq.xp.toLocaleString()} XP${wq.money ? ', ' + money(wq.money) : ''}</div>` : ''}</div></div>`;
+    ${wq && wq.xp ? `<div class="grey">${fxpCell(wq)} XP${wq.money ? ', ' + money(wq.money) : ''}</div>` : ''}</div></div>`;
   let side = '';
   const st = q.start || {}, en = q.end || {};
   side += `<h3>Start</h3><p>${[...(st.c || []).map(npcLink), ...(st.o || []).map(objLink), ...(st.i || []).map(i => itemLinkAny(i) + ' <span class="muted small">item</span>')].join('<br>') || '<span class="muted">unknown</span>'}</p>`;
@@ -1271,6 +1332,7 @@ function render() {
     case 'quest': html = pageQuest(id); break;
     case 'npc': html = pageNpc(id); break;
     case 'dungeon': html = pageDungeon(id, params); break;
+    case 'prep': html = pagePrep(id); break;
     case 'maps': html = pageMaps(); break;
     case 'map': html = pageMap(id); break;
     default: html = '<h1>Not found</h1>';

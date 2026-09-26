@@ -1,0 +1,153 @@
+/* Dungeon quest prep guides (Horde): what to pick up where, in what order, what to do inside, where to turn in.
+   Hand-written from research on 2026-09-26: Wowhead Forever quest and NPC pages (starters, enders, objectives, series,
+   NPC coordinates), QuestieDB (prerequisites, item drops, spawn points) and the Mobalytics dungeon guides (tips, where
+   in-dungeon givers stand). Coordinates are zone-map percentages. Quest ids resolve against FR_QUESTS for XP and rewards.
+   "go" = a quest you pick up before the run; "in" = starts inside; steps: {q, t, area, x, y, inside}. */
+window.FR_PREP = {
+  2437: {
+    n: 'Ragefire Chasm',
+    entrance: {area: 1637, x: 52.3, y: 49.4, t: 'Inside Orgrimmar, in the Cleft of Shadow'},
+    level: 'Quests need level 9; the mobs are 13–16. Go at 13–15.',
+    summary: 'Six quests (one of them starts inside). Two are picked up right by the entrance in Orgrimmar; one chain needs a short trip to Skull Rock first. Thunder Bluff and Undercity add three more, with the two gear rewards: worth it if you pass through anyway.',
+    stops: [
+      {title: 'Thrall', area: 1637, x: 31.7, y: 37.8, where: 'Orgrimmar, Valley of Wisdom',
+       pick: [{q: 5726, t: 'Hidden Enemies (step 1 of 5): bring him a Lieutenant\'s Insignia'}],
+       then: 'Go to Skull Rock (a cave just east of Orgrimmar\'s front gate, in Durotar) and kill Burning Blade Fanatics and Apprentices until one drops a Lieutenant\'s Insignia. Bring it back to Thrall, who gives step 2.'},
+      {title: 'Thrall, then Neeru Fireblade', area: 1637, x: 49.5, y: 50.6, where: 'Orgrimmar, Cleft of Shadow (next to the dungeon)',
+       pick: [{q: 5727, t: 'Hidden Enemies (step 2 of 5): show Neeru the insignia, talk to him, go back to Thrall'},
+              {q: 5761, t: 'Slaying the Beast: kill Taragaman, bring his heart'}],
+       then: 'Back at Thrall you get step 3, the dungeon part: kill Bazzalan and Jergosh.'},
+      {title: 'Rahauro', area: 1638, x: 70.1, y: 29.5, where: 'Thunder Bluff, Elder Rise', optional: true,
+       pick: [{q: 5723, t: 'Testing an Enemy\'s Strength: 8 Ragefire Troggs, 8 Ragefire Shamans'},
+              {q: 5722, t: 'Searching for the Lost Satchel: find Maur Grimtotem\'s corpse inside'}]},
+      {title: 'Varimathras', area: 1497, x: 56.2, y: 92.2, where: 'Undercity, Royal Quarter (next to Sylvanas)', optional: true,
+       pick: [{q: 5725, t: 'The Power to Destroy...: two spell books from the Searing Blade'}]},
+    ],
+    chains: [
+      {name: 'Hidden Enemies (Thrall)', steps: [
+        {q: 5726, t: 'Lieutenant\'s Insignia from the Burning Blade in Skull Rock', area: 14},
+        {q: 5727, t: 'Show the insignia to Neeru Fireblade, report to Thrall', area: 1637},
+        {q: 5728, t: 'Kill Bazzalan and Jergosh the Invoker', inside: true},
+        {q: 5729, t: 'Speak to Neeru Fireblade', area: 1637},
+        {q: 5730, t: 'Tell Thrall what you learned', area: 1637}]},
+      {name: 'The lost satchel (Rahauro)', steps: [
+        {q: 5722, t: 'Find Maur Grimtotem\'s corpse and search it', inside: true},
+        {q: 5724, t: 'Take the Grimtotem Satchel back to Rahauro in Thunder Bluff (the corpse gives this quest)', inside: true}]},
+    ],
+    inside: [
+      {q: 5723, t: 'Kill 8 Ragefire Troggs and 8 Ragefire Shamans (all over the first halls)'},
+      {q: 5725, t: 'Searing Blade Cultists and Warlocks drop Spells of Shadow and Incantations from the Nether'},
+      {q: 5722, t: 'Maur Grimtotem\'s corpse: click it, then accept Returning the Lost Satchel'},
+      {q: 5761, t: 'Taragaman the Hungerer, on the platform in the central chamber: take his heart'},
+      {q: 5728, t: 'Jergosh the Invoker (middle of the last room) and Bazzalan (up the ramp on the right in the last room)'},
+    ],
+    after: [
+      {title: 'Orgrimmar', area: 1637, x: 31.7, y: 37.8, t: 'Thrall (Hidden Enemies 3 → he sends you to Neeru for step 4, Neeru back to Thrall for step 5), Neeru Fireblade (Slaying the Beast)'},
+      {title: 'Thunder Bluff', area: 1638, x: 70.1, y: 29.5, t: 'Rahauro: Testing an Enemy\'s Strength and Returning the Lost Satchel (bracers)'},
+      {title: 'Undercity', area: 1497, x: 56.2, y: 92.2, t: 'Varimathras: The Power to Destroy... (leggings)'},
+    ],
+    tips: ['Kill every Searing Blade Cultist and Warlock you pass: the two books drop only from them (QuestieDB).',
+           'After Jergosh you can walk up a slope beside the ramp to reach Bazzalan halfway, instead of going round to the bottom (Mobalytics community tip).'],
+    guide: 'https://mobalytics.gg/wow-forever/dungeons/rage-fire-chasm-dungeon-guide',
+  },
+
+  718: {
+    n: 'Wailing Caverns',
+    entrance: {area: 17, x: 46.0, y: 36.0, t: 'The Barrens, in the cave mouth under the Lushwater Oasis mountain (the Disciples Nalpak and Ebru stand in the cave above it)'},
+    level: 'Quests need level 10–15; the mobs are 17–22. Go at 18–20.',
+    summary: 'The big one: up to eight quests. The best reward (Leaders of the Fang) needs Tonga\'s Barrens Oases chain done first, so start that early while you quest around the Crossroads. Ratchet gives two more, Thunder Bluff one (Serpentbloom) besides the chain, and two are picked up at the dungeon\'s door.',
+    stops: [
+      {title: 'Tonga Runetotem', area: 17, x: 52.3, y: 31.9, where: 'The Barrens, the Crossroads',
+       pick: [{q: 870, t: 'The Forgotten Pools: explore the pools northwest of the Crossroads'}],
+       then: 'Then The Stagnant Oasis (plant his seeds in the fissure at the oasis to the southeast) and Altered Beings (8 Altered Snapjaw Shells from Oasis Snapjaws at the Lushwater and Stagnant oases). He then sends you to Hamuul in Thunder Bluff.'},
+      {title: 'Hamuul Runetotem, then Nara Wildmane', area: 1638, x: 75.7, y: 31.6, where: 'Thunder Bluff, Elder Rise',
+       pick: [{q: 1489, t: 'Hamuul Runetotem: speak with him'}, {q: 1490, t: 'Nara Wildmane: speak with her'}, {q: 914, t: 'Leaders of the Fang: the four Fang druids\' gems'}]},
+      {title: 'Apothecary Zamah', area: 1638, x: 22.8, y: 20.9, where: 'Thunder Bluff, the cave under Spirit Rise',
+       pick: [{q: 962, t: 'Serpentbloom: pick 10 inside'}]},
+      {title: 'Mebok Mizzyrix and Crane Operator Bigglefuzz', area: 17, x: 62.4, y: 37.6, where: 'The Barrens, Ratchet',
+       pick: [{q: 865, t: 'Raptor Horns (prep): 5 Intact Raptor Horns from Sunscale Scytheclaws'},
+              {q: 1491, t: 'Smart Drinks: 6 Wailing Essence (after Raptor Horns)'},
+              {q: 959, t: 'Trouble at the Docks: Mad Magglish\'s 99-Year-Old Port (Bigglefuzz, on the dock)'}]},
+      {title: 'Nalpak and Ebru', area: 17, x: 46.0, y: 35.7, where: 'The Barrens, the cave above the dungeon entrance (reach it by dropping down from the mountain)',
+       pick: [{q: 1486, t: 'Deviate Hides: 20 hides'}, {q: 1487, t: 'Deviate Eradication: 7 each of four deviate types'}]},
+    ],
+    chains: [
+      {name: 'Tonga\'s oases → Leaders of the Fang', steps: [
+        {q: 870, t: 'Explore the Forgotten Pools', area: 17},
+        {q: 877, t: 'Plant the seeds at the Stagnant Oasis', area: 17},
+        {q: 880, t: '8 Altered Snapjaw Shells', area: 17},
+        {q: 1489, t: 'Speak with Hamuul Runetotem in Thunder Bluff', area: 1638},
+        {q: 1490, t: 'Speak with Nara Wildmane', area: 1638},
+        {q: 914, t: 'The four gems: Cobrahn, Anacondra, Pythas, Serpentis', inside: true}]},
+      {name: 'Mebok\'s smart drinks', steps: [
+        {q: 865, t: '5 Intact Raptor Horns from Sunscale Scytheclaws', area: 17},
+        {q: 1491, t: '6 Wailing Essence from the ectoplasms', inside: true}]},
+      {name: 'The Glowing Shard (starts inside)', steps: [
+        {q: 6981, t: 'Mutanus the Devourer drops the Glowing Shard: ask in Ratchet, you are sent to Falla Sagewind on top of the Wailing Caverns mountain', inside: true},
+        {q: 3369, t: 'In Nightmares: take the Nightmare Shard to Hamuul Runetotem in Thunder Bluff', area: 1638}]},
+    ],
+    inside: [
+      {q: 914, t: 'Lady Anacondra, Lord Cobrahn, Lord Pythas, Lord Serpentis: one gem each (Anacondra spawns in one of four spots in the first big chamber)'},
+      {q: 1486, t: '20 Deviate Hides from the deviate beasts (Stalkers, Slayers, Ravagers, Lurkers...)'},
+      {q: 1487, t: '7 Deviate Ravagers, 7 Deviate Vipers, 7 Deviate Shamblers, 7 Deviate Dreadfangs'},
+      {q: 1491, t: '6 Wailing Essence from Devouring, Evolving and Nightmare Ectoplasms'},
+      {q: 962, t: '10 Serpentbloom: the plants on the cave floors'},
+      {q: 959, t: 'Mad Magglish: kill him for the port'},
+      {q: 6981, t: 'After all four lords: talk to the Disciple of Naralex at the entrance for the escort; Mutanus comes at the end and drops the Glowing Shard'},
+    ],
+    after: [
+      {title: 'The cave above the entrance', area: 17, x: 46.0, y: 35.7, t: 'Nalpak (Deviate Hides) and Ebru (Deviate Eradication)'},
+      {title: 'Falla Sagewind', area: 17, x: 48.2, y: 32.8, t: 'The Glowing Shard (on top of the mountain), then In Nightmares goes to Hamuul'},
+      {title: 'Ratchet', area: 17, x: 62.4, y: 37.6, t: 'Mebok Mizzyrix (Smart Drinks), Bigglefuzz (Trouble at the Docks)'},
+      {title: 'Thunder Bluff', area: 1638, x: 75.7, y: 31.6, t: 'Nara Wildmane (Leaders of the Fang: Crescent Staff or Wingblade), Hamuul (In Nightmares), Zamah (Serpentbloom)'},
+    ],
+    tips: ['Start Tonga\'s chain as soon as you reach the Crossroads (level 10+): it is outdoor questing you do anyway, and it unlocks the best reward here.',
+           'Clear the upper areas of the first big cavern before starting the escort, so the Disciple\'s event goes smoothly (Mobalytics).',
+           'Kick the druids\' Sleep: all four Fang lords cast it.'],
+    guide: 'https://mobalytics.gg/wow-forever/dungeons/wailing-caverns-dungeon-guide',
+  },
+
+  16611: {
+    n: 'Ruins of Lordaeron',
+    entrance: {t: 'New in Forever: just outside Undercity, on the east side of the ruined keep\'s main courtyard above it (Mobalytics gives 71.6, 11.4 without naming the map)'},
+    level: 'Quests need level 15–16; be at least 15, though the dungeon is listed as 11–24 (Mobalytics). Go at 17–20.',
+    summary: 'Seven Horde quests, all new in Forever. Three are picked up in Undercity, one just outside it, one in Silverpine. Two more start inside from items (The Baron\'s head and a crest), and the head leads to a five-step chain in Undercity with the best rewards.',
+    stops: [
+      {title: 'Theodore Griffs', area: 1497, x: 46.3, y: 71.9, where: 'Undercity, the Apothecarium',
+       pick: [{q: 95216, t: 'The New Plague: Highly Toxic Strain from Witherfang'}]},
+      {title: 'Morbin Lightbane', area: 1497, x: 57.4, y: 90.4, where: 'Undercity, Royal Quarter (near Sylvanas)',
+       pick: [{q: 92421, t: 'Light\'s Justice: 25 Intact Limbs'}]},
+      {title: 'Deathguard Kristof', area: 85, x: 65.2, y: 60.2, where: 'Tirisfal Glades, by the tents outside Undercity (the quest text says Brill; Wowhead places him here)',
+       pick: [{q: 92422, t: 'The Wrath of Rath\'mael: kill Rath\'mael'}]},
+      {title: 'Tabitha Heartweaver', area: 130, x: 44.4, y: 43.0, where: 'Silverpine Forest, the Sepulcher', optional: true,
+       pick: [{q: 92401, t: 'A Frightened Request: find out what happened to her husband Edward'}]},
+    ],
+    chains: [
+      {name: 'Unending Torment (starts inside, from The Baron)', steps: [
+        {q: 97288, t: 'The Baron drops the Abominable Head: use it, bring it to Master Apothecary Faranell (Apothecarium)', inside: true},
+        {q: 97289, t: 'Place the Head of the Baron next to Othmar\'s body in the next room', area: 1497},
+        {q: 97290, n: 'Unending Torment', t: 'Talk to the Unfinished Abomination, report back to Faranell', area: 1497},
+        {q: 97291, t: 'Fetch a Toxic Skullcap (Tawny Grisette, Trade Quarter), Blisterweed (the herbalism trainers) and Essence of Agony (the poison vendor, Rogues\' Quarter)', area: 1497},
+        {q: 97292, t: 'Feed the Hissing Serum into the workings above Othmar\'s body', area: 1497}]},
+    ],
+    inside: [
+      {q: 92421, t: '25 Intact Limbs from the undead in the ruins (collect as you go)'},
+      {q: 95216, t: 'Witherfang, the spider patrolling the long first hallway: the Highly Toxic Strain'},
+      {q: 97288, t: 'The Baron, at the end of the first hallway at the bend: take his head and use it to start Unending Torment'},
+      {q: 92422, t: 'Rath\'mael, the mage in the southwestern part: kill him (interrupt Flamestrike)'},
+      {q: 95204, t: 'Near Bjork (southwest) a tower with a big open door: the Crest of Lordaeron lies on the floor inside'},
+      {q: 92401, t: 'Edward Heartweaver: the guides do not say where; he went to the graveyard in the ruins'},
+    ],
+    after: [
+      {title: 'Undercity, the Apothecarium', area: 1497, x: 48.4, y: 69.4, t: 'Master Apothecary Faranell (all of Unending Torment happens here and in the next room, around 46, 62), Theodore Griffs (The New Plague)'},
+      {title: 'Undercity, Royal Quarter', area: 1497, x: 57.4, y: 90.4, t: 'Morbin Lightbane (Light\'s Justice)'},
+      {title: 'Undercity, Oran Snakewrithe', area: 1497, x: 73.4, y: 32.4, t: 'Crest of Lordaeron (a Small Sack of Gems)'},
+      {title: 'Tirisfal Glades', area: 85, x: 65.2, y: 60.2, t: 'Deathguard Kristof (The Wrath of Rath\'mael)'},
+      {title: 'Silverpine Forest', area: 130, x: 44.4, y: 43.0, t: 'Tabitha Heartweaver (A Frightened Request)'},
+    ],
+    tips: ['Witherfang patrols a long route through the first hallway, with adds: watch for her early.',
+           'Buy the Unending Torment ingredients while you are in Undercity anyway: the Essence of Agony comes from the poison vendor.',
+           'Two optional bosses (The Abandoned, Viktor the Vile) are summoned with waves of adds; neither is needed for a quest.'],
+    guide: 'https://mobalytics.gg/wow-forever/dungeons/ruins-of-lordaeron-dungeon-guide',
+  },
+};
