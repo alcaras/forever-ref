@@ -915,11 +915,35 @@ function pageDungeon(zone, params) {
   const groups = new Map();
   qs.forEach(q => { const k = `${q.n}|${q.lv}|${q.rl}|${q.side}`; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(q); });
   const rows = [...groups.values()].map(g => { const main = g.find(q => q.id === hl) || g.find(q => q.chain) || g[0]; return {main, vars: g.filter(q => q !== main)}; });
+  /* steps of one chain sit together, in step order, where the chain's first row on this page would be; later steps are indented.
+     The chain comes from Wowhead's series box, else QuestieDB's prerequisite on another quest of this page. */
+  const rowOf = {};
+  rows.forEach((r, i) => [r.main].concat(r.vars).forEach(q => { rowOf[q.id] = i; }));
+  const link = rows.map(r => {
+    const q = r.main;
+    const first = q.chain && q.chain.flatMap(s => s[1])[0];   // some Wowhead series have an empty step
+    return first ? {key: 'c' + first[0], pos: q.chain.findIndex(s => s[1].some(x => x[0] === q.id))} : null;
+  });
+  rows.forEach((r, i) => {
+    if (link[i]) return;
+    const pre = [...((QDB.quests[r.main.id] || {}).pre || []), ...((QDB.quests[r.main.id] || {}).preg || []), r.main.after].find(p => p && rowOf[p] !== undefined && rowOf[p] !== i);
+    if (pre) link[i] = {pre: rowOf[pre]};
+  });
+  const keyOf = i => { let n = 0; while (link[i] && link[i].pre !== undefined && n++ < 20) i = link[i].pre; return link[i] && link[i].key ? link[i].key : 'r' + i; };
+  const posOf = i => { let n = 0, d = 0; while (link[i] && link[i].pre !== undefined && n++ < 20) { i = link[i].pre; d++; } return (link[i] && link[i].pos || 0) + d; };
+  const anchor = {};
+  rows.forEach((r, i) => { const k = keyOf(i); if (!(k in anchor)) anchor[k] = i; });
+  const size = {};
+  rows.forEach((r, i) => { const k = keyOf(i); size[k] = (size[k] || 0) + 1; });
+  const order = rows.map((r, i) => ({r, i, k: keyOf(i), p: posOf(i)})).sort((a, b) => anchor[a.k] - anchor[b.k] || a.p - b.p || a.i - b.i);
+  const firstOf = {};
+  order.forEach(o => { o.r.next = size[o.k] > 1 && o.k in firstOf; firstOf[o.k] = true; });
+  rows.splice(0, rows.length, ...order.map(o => o.r));
   const who = q => [q.cls, q.race].filter(Boolean).join(', ');
   const npc = x => `<a class="ext" href="${WH}${x[0]}=${x[1]}" target="_blank">${esc(x[2])}</a>`;
   const giver = q => (q.start || q.end || q.desc) ? `${(q.start || []).map(npc).join(', ') || `<span class="muted" title="Wowhead has no starter recorded: probably a drop or auto-accept">unknown start</span>`} <span class="muted">→</span> ${(q.end || []).map(npc).join(', ') || '<span class="muted">–</span>'}${!q.start && q.desc ? `<div class="muted" style="font-style:italic" title="${esc(q.desc)}">${esc(q.desc.slice(0, 140))}${q.desc.length > 140 ? '…' : ''}</div>` : ''}` : '';
   h += `<table><thead><tr><th>Quest</th><th>Level</th><th>Req</th><th>Side</th><th>XP</th><th title="Where the quest is picked up: the quest giver's zone, or where its starting item drops">Zone</th><th>Start → End</th><th>Chain</th><th>Rewards</th><th>Reputation</th><th>Forever changes</th></tr></thead><tbody>`;
-  h += rows.map(({main: q, vars}) => `<tr id="q${q.id}" class="${q.id === hl ? 'hl' : ''}"><td>${QDB.quests[q.id] ? `<a href="#/quest/${q.id}">${esc(q.n)}</a>` : `<a href="${WH}quest=${q.id}" target="_blank">${esc(q.n)}</a>`} <span class="muted small">#${q.id}${who(q) ? ' · ' + esc(who(q)) : ''}</span>${q.col ? ' <span class="badge new" title="Recorded in-game by AlcCollect; not on Wowhead">COLLECTED</span>' : ''}${q.qdb ? ' <span class="badge mod" title="From QuestieDB; not in Wowhead\'s zone list">QUESTIE</span>' : ''}${q.after ? `<div class="muted small">offered after <a href="${WH}quest=${q.after}" target="_blank">#${q.after}</a></div>` : ''}${QTYPE[q.type] && q.type !== 81 ? ` <span class="muted small">${QTYPE[q.type]}</span>` : ''}${vars.length ? `<div class="muted small">${vars.length + 1} variants: ${[q].concat(vars).map(v => `<a href="${WH}quest=${v.id}" target="_blank">#${v.id}</a>${who(v) ? ' (' + esc(who(v)) + ')' : ''}`).join(', ')}</div>` : ''}</td>
+  h += rows.map(({main: q, vars, next}) => `<tr id="q${q.id}" class="${q.id === hl ? 'hl' : ''}${next ? ' chain-next' : ''}"><td>${next ? '<span class="muted" title="next step of the chain above">↳</span> ' : ''}${QDB.quests[q.id] ? `<a href="#/quest/${q.id}">${esc(q.n)}</a>` : `<a href="${WH}quest=${q.id}" target="_blank">${esc(q.n)}</a>`} <span class="muted small">#${q.id}${who(q) ? ' · ' + esc(who(q)) : ''}</span>${q.col ? ' <span class="badge new" title="Recorded in-game by AlcCollect; not on Wowhead">COLLECTED</span>' : ''}${q.qdb ? ' <span class="badge mod" title="From QuestieDB; not in Wowhead\'s zone list">QUESTIE</span>' : ''}${q.after ? `<div class="muted small">offered after <a href="${WH}quest=${q.after}" target="_blank">#${q.after}</a></div>` : ''}${QTYPE[q.type] && q.type !== 81 ? ` <span class="muted small">${QTYPE[q.type]}</span>` : ''}${vars.length ? `<div class="muted small">${vars.length + 1} variants: ${[q].concat(vars).map(v => `<a href="${WH}quest=${v.id}" target="_blank">#${v.id}</a>${who(v) ? ' (' + esc(who(v)) + ')' : ''}`).join(', ')}</div>` : ''}</td>
     <td class="num">${q.lv || ''}</td><td class="num">${q.rl || ''}</td><td><span class="${(SIDE[q.side] || ['', ''])[1]}" ${q.inf ? 'title="Wowhead has no faction flag; inferred from the quest NPC"' : ''}>${(SIDE[q.side] || ['?'])[0]}${q.inf ? '*' : ''}</span></td>
     <td class="num">${q.xp ? q.xp.toLocaleString() : ''}${q.money ? '<br>' + money(q.money) : ''}</td>
     <td class="small">${questFromCell([q].concat(vars), d)}</td>

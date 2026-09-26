@@ -113,3 +113,5 @@ h4 { margin: 12px 0 4px; font-size: 13px; color: var(--muted); text-transform: u
 .zones ul ul { columns: 1; padding-left: 14px; }
 .zones li { break-inside: avoid; padding: 2px 0; }
 @media (max-width: 800px) { .zones ul { columns: 1; } .search { max-width: none; } }
+tr:has(+ tr.chain-next) td { border-bottom-color: transparent; }
+tr.chain-next td:first-child { padding-left: 18px; }
