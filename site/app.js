@@ -968,11 +968,15 @@ function prepQuest(id) {
   const w = WQ[id], q = QDB.quests[id];
   const n = (w && w.n) || (q && q.n) || '#' + id;
   const link = q ? `#/quest/${id}` : w ? `#/dungeon/${QUEST_ZONE[id]}?hl=${id}` : `${WH}quest=${id}`;
-  return {n, w, link, ext: !q && !w, rl: (w && w.rl) || (q && q.rl) || 0, xp: fxp(w)};
+  /* XP: what the game gave when AlcCollect saw the turn-in, else Wowhead's base x Forever's multiplier */
+  const cq = COLLECT.quests[id];
+  const seen = cq && cq.xp != null && (cq.ender || cq.xp > 0);   /* a corpse or object turn-in records no ender */
+  return {n, w, link, ext: !q && !w, rl: (w && w.rl) || (q && q.rl) || 0, xp: seen ? cq.xp : fxp(w), seen};
 }
 function prepQuestLine(id, text) {
   const p = prepQuest(id);
-  const bits = [p.rl ? `needs ${p.rl}` : '', p.xp ? `${p.xp.toLocaleString()} XP` : ''].filter(Boolean).join(' · ');
+  const xpText = p.seen ? (p.xp ? `<span title="What the game gave when you turned it in (AlcCollect)">${p.xp.toLocaleString()} XP ✓</span>` : '<span title="Turned in with AlcCollect running: no XP">no XP ✓</span>') : p.xp ? `${p.xp.toLocaleString()} XP` : '';
+  const bits = [p.rl ? `needs ${p.rl}` : '', xpText].filter(Boolean).join(' · ');
   const rew = p.w && (p.w.rew || p.w.choice) ? `<div class="prep-rew">${questRewards(p.w).replace(/<br>/g, ' ')}</div>` : '';
   return `<li><a href="${p.link}"${p.ext ? ' target="_blank" class="ext"' : ''}><b>${esc(p.n)}</b></a>${bits ? ` <span class="muted small">${bits}</span>` : ''}<div class="small">${esc(text || '')}</div>${rew}</li>`;
 }
