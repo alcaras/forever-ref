@@ -99,6 +99,42 @@ for z in ORDER:
     dungeons.append({'zone': z, 'n': name, 'kind': 'raid' if z in RAIDS else 'dungeon', 'quests': quests,
                      'nodata': e.get('quests') is None})
 
+# Where each quest starts: the site takes the starter's zone from QuestieDB. Starters QuestieDB has no zone for
+# (NPCs inside instances, Forever-new NPCs) get it from their Wowhead page, appended as a 4th field [kind, id, name, zone].
+import re, urllib.request, time
+qdb_path = os.path.join(ROOT, 'site', 'questie', 'questie.js')
+qdb = json.loads(open(qdb_path, encoding='utf-8').read()[len('window.FR_QUESTIE='):-2]) if os.path.exists(qdb_path) else {}
+START_ZONE_OVERRIDES = {
+    ('npc', 16033): 25,        # Bodley: ghost outside Blackrock Spire in Blackrock Mountain; his Wowhead page has no location
+    ('npc', 8888): 25,         # Franclorn Forgewright: ghost at his tomb in Blackrock Mountain; no Wowhead location
+    ('npc', 184290): 25,       # Franclorn Forgewright, Forever's second id for the same ghost
+    ('object', 112877): 1537,  # Talvash's Scrying Bowl, Ironforge; Wowhead's object page mixes in unrelated locations
+}
+sz_path = os.path.join(ROOT, 'cache', 'wowhead', 'start-zone.json')
+start_zone = json.load(open(sz_path, encoding='utf-8')) if os.path.exists(sz_path) else {}
+def qdb_zone(kind, i):
+    return ((qdb.get('npcs' if kind == 'npc' else 'objects') or {}).get(str(i)) or {}).get('zone')
+def wowhead_zone(kind, i):
+    key = f'{kind}={i}'
+    if key not in start_zone:
+        try:
+            h = urllib.request.urlopen(urllib.request.Request(f'https://www.wowhead.com/forever/{key}', headers={'User-Agent': 'Mozilla/5.0 forever-ref'}), timeout=30).read().decode('utf-8', 'replace')
+            m = re.search(r'g_mapperData\s*=\s*\{"(\d+)"', h) or re.search(r'"location":\[(\d+)\]', h)   # the page's own map first
+            start_zone[key] = int(m.group(1)) if m else 0
+        except Exception as ex:
+            print('  wowhead location failed', key, ex)
+            return 0
+        time.sleep(0.5)
+    return start_zone[key]
+for d in dungeons:
+    for q in d['quests']:
+        for s in q.get('start') or []:
+            if s[0] in ('npc', 'object') and not qdb_zone(s[0], s[1]):
+                z = START_ZONE_OVERRIDES.get((s[0], s[1])) or wowhead_zone(s[0], s[1])
+                if z:
+                    s.append(z)
+json.dump(start_zone, open(sz_path, 'w', encoding='utf-8'), indent=0, sort_keys=True)
+
 # Reward items that are not in the Forever client tables: look their names up on Wowhead's tooltip endpoint (cached).
 import json as _json, re, html as _html, time, urllib.request
 site_items = _json.loads(open(os.path.join(ROOT, 'site', 'data', 'items.js'), encoding='utf-8').read()[len('window.FR_ITEMS='):-2])

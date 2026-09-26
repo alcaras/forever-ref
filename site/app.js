@@ -814,6 +814,33 @@ function questChain(q, zone) {
   };
   return `<details class="chain"><summary>Step ${pos + 1} of ${q.chain.length}</summary><ol>${q.chain.map(s => `<li>${s[1].map(link).join(' <span class="muted">or</span> ')}</li>`).join('')}</ol></details>`;
 }
+/* where a quest is picked up: the starter's zone (QuestieDB, else the Wowhead zone quests.py appends as a 4th field),
+   the drop zones of a starting item, else the in-game record. Returns [[zone id or name, 'drop'|''], ...]. */
+function questFrom(q) {
+  let start = q.start;
+  if (!start) { const s = (QDB.quests[q.id] || {}).start || {}; start = [...(s.c || []).map(c => ['npc', c]), ...(s.o || []).map(o => ['object', o]), ...(s.i || []).map(i => ['item', i])]; }
+  const out = [];
+  const add = (z, how) => { if (z && !out.some(x => x[0] === z)) out.push([z, how]); };
+  start.forEach(s => {
+    if (s[0] === 'npc') add((QDB.npcs[s[1]] || {}).zone || s[3], '');
+    else if (s[0] === 'object') add((QDB.objects[s[1]] || {}).zone || s[3], '');
+    else if (s[0] === 'item') { const it = QDB.items[s[1]] || {}; (it.drops || []).forEach(n => add((QDB.npcs[n] || {}).zone, 'drop')); (it.odrops || []).forEach(o => add((QDB.objects[o] || {}).zone, 'drop')); }
+  });
+  const cq = COLLECT.quests[q.id];
+  if (!out.length && cq && cq.gpos && cq.gpos.i) add(cq.gpos.i, '');
+  out.item = start.some(s => s[0] === 'item');
+  return out;
+}
+function questFromCell(qs, d) {
+  const zs = [];
+  let item = false;
+  qs.forEach(q => { const f = questFrom(q); item = item || f.item; f.forEach(x => { if (!zs.some(y => y[0] === x[0])) zs.push(x); }); });
+  if (!zs.length) return item ? '<span class="muted" title="Starts from an item; no drop location recorded">item</span>' : '';
+  const inside = z => z === d.zone || dungeonZones(d.zone).includes(z) || z === d.n;
+  zs.sort((a, b) => inside(a[0]) - inside(b[0]));   // outside zones first: that is where you travel to pick it up
+  const label = ([z, how]) => (inside(z) ? '<span title="picked up inside this instance">inside</span>' : typeof z === 'number' ? zoneLink(z) : esc(z)) + (how ? ' <span class="muted small">drop</span>' : '');
+  return zs.slice(0, 3).map(label).join('<br>') + (zs.length > 3 ? ` <span class="muted small">+${zs.length - 3}</span>` : '');
+}
 function questRep(q) {
   return (q.rep || []).map(r => `${esc(QUESTS.factions[r[0]] || '#' + r[0])} <span class="muted">${r[1] > 0 ? '+' : ''}${r[1]}</span>`).join('<br>');
 }
@@ -881,10 +908,11 @@ function pageDungeon(zone, params) {
   const who = q => [q.cls, q.race].filter(Boolean).join(', ');
   const npc = x => `<a class="ext" href="${WH}${x[0]}=${x[1]}" target="_blank">${esc(x[2])}</a>`;
   const giver = q => (q.start || q.end || q.desc) ? `${(q.start || []).map(npc).join(', ') || `<span class="muted" title="Wowhead has no starter recorded: probably a drop or auto-accept">unknown start</span>`} <span class="muted">→</span> ${(q.end || []).map(npc).join(', ') || '<span class="muted">–</span>'}${!q.start && q.desc ? `<div class="muted" style="font-style:italic" title="${esc(q.desc)}">${esc(q.desc.slice(0, 140))}${q.desc.length > 140 ? '…' : ''}</div>` : ''}` : '';
-  h += `<table><thead><tr><th>Quest</th><th>Level</th><th>Req</th><th>Side</th><th>XP</th><th>Start → End</th><th>Chain</th><th>Rewards</th><th>Reputation</th><th>Forever changes</th></tr></thead><tbody>`;
+  h += `<table><thead><tr><th>Quest</th><th>Level</th><th>Req</th><th>Side</th><th>XP</th><th title="Where the quest is picked up: the quest giver's zone, or where its starting item drops">Zone</th><th>Start → End</th><th>Chain</th><th>Rewards</th><th>Reputation</th><th>Forever changes</th></tr></thead><tbody>`;
   h += rows.map(({main: q, vars}) => `<tr id="q${q.id}" class="${q.id === hl ? 'hl' : ''}"><td>${QDB.quests[q.id] ? `<a href="#/quest/${q.id}">${esc(q.n)}</a>` : `<a href="${WH}quest=${q.id}" target="_blank">${esc(q.n)}</a>`} <span class="muted small">#${q.id}${who(q) ? ' · ' + esc(who(q)) : ''}</span>${q.col ? ' <span class="badge new" title="Recorded in-game by AlcCollect; not on Wowhead">COLLECTED</span>' : ''}${q.qdb ? ' <span class="badge mod" title="From QuestieDB; not in Wowhead\'s zone list">QUESTIE</span>' : ''}${q.after ? `<div class="muted small">offered after <a href="${WH}quest=${q.after}" target="_blank">#${q.after}</a></div>` : ''}${QTYPE[q.type] && q.type !== 81 ? ` <span class="muted small">${QTYPE[q.type]}</span>` : ''}${vars.length ? `<div class="muted small">${vars.length + 1} variants: ${[q].concat(vars).map(v => `<a href="${WH}quest=${v.id}" target="_blank">#${v.id}</a>${who(v) ? ' (' + esc(who(v)) + ')' : ''}`).join(', ')}</div>` : ''}</td>
     <td class="num">${q.lv || ''}</td><td class="num">${q.rl || ''}</td><td><span class="${(SIDE[q.side] || ['', ''])[1]}" ${q.inf ? 'title="Wowhead has no faction flag; inferred from the quest NPC"' : ''}>${(SIDE[q.side] || ['?'])[0]}${q.inf ? '*' : ''}</span></td>
     <td class="num">${q.xp ? q.xp.toLocaleString() : ''}${q.money ? '<br>' + money(q.money) : ''}</td>
+    <td class="small">${questFromCell([q].concat(vars), d)}</td>
     <td class="small">${giver(q)}${vars.map(v => giver(v) ? `<div class="muted">#${v.id}: ${giver(v)}</div>` : '').join('')}</td>
     <td class="small">${questChain(q, d.zone)}</td>
     <td>${questRewards(q)}</td><td class="small">${questRep(q)}</td><td class="small chg">${(q.chg || []).map(esc).join('<br>')}</td></tr>`).join('');
