@@ -1,0 +1,24 @@
+{
+  "_about": "Hand-curated from the Mobalytics WoW Forever dungeon guides (mobalytics.gg/wow-forever/dungeons, read 2026-09-26), facts restated in our own words. 'add': quest ids Wowhead's zone list lacks (details are fetched from the Wowhead quest page by quests.py). 'notes': how a quest starts when Wowhead records no starter; inside = picked up in the instance.",
+  "2437":  {"guide": "https://mobalytics.gg/wow-forever/dungeons/rage-fire-chasm-dungeon-guide"},
+  "718":   {"guide": "https://mobalytics.gg/wow-forever/dungeons/wailing-caverns-dungeon-guide"},
+  "1581":  {"guide": "https://mobalytics.gg/wow-forever/dungeons/the-deadmines-dungeon-guide"},
+  "717":   {"guide": "https://mobalytics.gg/wow-forever/dungeons/the-stockade-dungeon-guide"},
+  "16611": {
+    "guide": "https://mobalytics.gg/wow-forever/dungeons/ruins-of-lordaeron-dungeon-guide",
+    "add": [92401],
+    "notes": {
+      "97288": {"inside": true, "how": "The Baron drops his head when he dies; use it to start the chain"},
+      "95189": {"inside": true, "how": "A crest lying on the floor of the open tower near Bjork"},
+      "95204": {"inside": true, "how": "A crest lying on the floor of the open tower near Bjork"}
+    }
+  },
+  "16919": {
+    "guide": "https://mobalytics.gg/wow-forever/dungeons/the-hall-of-thanes-dungeon-guide",
+    "add": [98423],
+    "notes": {
+      "96395": {"inside": true, "how": "Ghostly Attendant in the west wing"},
+      "98423": {"inside": true, "how": "A stone tablet behind one of the doors in the final boss room"}
+    }
+  }
+}

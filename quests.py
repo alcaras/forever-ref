@@ -52,6 +52,45 @@ SIDE_OVERRIDES = {
     85557: 3,   # Efficiency Is Priority One: Krixix
 }
 
+# Quests Wowhead's zone lists lack but the dungeon guides name (guide-quests.json): details from each quest's Wowhead page.
+import re, urllib.request, time
+guides = {k: v for k, v in json.load(open(os.path.join(ROOT, 'guide-quests.json'), encoding='utf-8')).items() if not k.startswith('_')}
+extra_path = os.path.join(ROOT, 'cache', 'wowhead', 'quest-extra.json')
+extra_q = json.load(open(extra_path, encoding='utf-8')) if os.path.exists(extra_path) else {}
+def wowhead_quest(qid):
+    if str(qid) in extra_q:
+        return extra_q[str(qid)]
+    h = urllib.request.urlopen(urllib.request.Request(f'https://www.wowhead.com/forever/quest={qid}', headers={'User-Agent': 'Mozilla/5.0 forever-ref'}), timeout=30).read().decode('utf-8', 'replace')
+    facts = (re.search(r'WH\.markup\.printHtml\("(\[ul\].*?)"', h) or [None, ''])[1].replace('\\/', '/')
+    num = lambda pat: int((re.search(pat, facts) or [0, 0])[1])
+    who = lambda k: [[m[0], int(m[1]), m[2]] for m in re.findall(r'\]' + k + r': \[url=/forever/(npc|object|item)=(\d+)/[^\]]*\]([^\[]*)\[/url\]', facts)]
+    side = (re.search(r'Side: \[span class=icon-(\w+)\]', facts) or [0, ''])[1]
+    lv = num(r'Level: (\d+)')
+    sc = re.search(r'setupScalingRewards\((\{.*?\})\);', h)
+    sc = json.loads(sc.group(1)) if sc else {}
+    table = lambda tid: [[int(i), 1] for i in re.findall(r'item=(\d+)', (re.search(r'id="' + tid + r'">(.*?)</table>', h, re.S) or [0, ''])[1])]
+    q = {'id': qid, 'name': re.sub(r' - Quest - Forever$', '', (re.search(r'<title>([^<]*)', h) or [0, ''])[1]), 'level': lv, 'reqlevel': num(r'Requires level (\d+)'),
+         'side': {'horde': 2, 'alliance': 1}.get(side, 3 if 'Both' in facts else 0), 'type': 81 if 'Type: Dungeon' in facts else 0,
+         'xp': ((sc.get('xp') or {}).get('levels') or {}).get(str(lv), 0), 'money': ((sc.get('coin') or {}).get('levels') or {}).get(str(lv), 0),
+         'itemchoices': table('choicerewards'), 'itemrewards': table('rewards'),
+         'reprewards': [[int(f), int(v)] for v, f in re.findall(r'<span>(-?\d+)</span> reputation with <a href="/forever/faction=(\d+)', h)],
+         'start': who('Start'), 'end': who('End')}
+    extra_q[str(qid)] = q
+    time.sleep(0.5)
+    return q
+for z, g in guides.items():
+    e = raw.setdefault(z, {'quests': []})
+    have = {q['id'] for q in e.get('quests') or []}
+    for qid in g.get('add', []):
+        if qid in have:
+            continue
+        q = dict(wowhead_quest(qid), guide=1)
+        if e.get('quests') is None:
+            e['quests'] = []
+        e['quests'].append(q)
+        info.setdefault(str(qid), {k: q[k] for k in ('start', 'end') if q[k]})
+json.dump(extra_q, open(extra_path, 'w', encoding='utf-8'), indent=0)
+
 dungeons = []
 used_factions = set()
 for z in ORDER:
@@ -85,6 +124,13 @@ for z in ORDER:
         for k in ('start', 'end'):
             if qi.get(k):
                 rec[k] = qi[k]          # [[npc|object|item, id, name], ...]
+        note = (guides.get(str(z)) or {}).get('notes', {}).get(str(q['id']))
+        if note and not qi.get('start'):
+            rec['note'] = note['how']       # how it starts, from the dungeon guide
+            if note.get('inside'):
+                rec['inside'] = 1
+        if q.get('guide'):
+            rec['guide'] = 1                # not in Wowhead's zone list; named by the dungeon guide
         if not qi.get('start') and descs.get(str(q['id'])):
             rec['desc'] = descs[str(q['id'])][:300]
         if qi.get('cls'):
@@ -97,11 +143,10 @@ for z in ORDER:
         quests.append(rec)
     quests.sort(key=lambda q: (q['lv'], q['n']))
     dungeons.append({'zone': z, 'n': name, 'kind': 'raid' if z in RAIDS else 'dungeon', 'quests': quests,
-                     'nodata': e.get('quests') is None})
+                     'nodata': e.get('quests') is None, **({'guide': guides[str(z)]['guide']} if guides.get(str(z), {}).get('guide') else {})})
 
 # Where each quest starts: the site takes the starter's zone from QuestieDB. Starters QuestieDB has no zone for
 # (NPCs inside instances, Forever-new NPCs) get it from their Wowhead page, appended as a 4th field [kind, id, name, zone].
-import re, urllib.request, time
 qdb_path = os.path.join(ROOT, 'site', 'questie', 'questie.js')
 qdb = json.loads(open(qdb_path, encoding='utf-8').read()[len('window.FR_QUESTIE='):-2]) if os.path.exists(qdb_path) else {}
 START_ZONE_OVERRIDES = {
