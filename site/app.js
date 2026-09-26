@@ -267,7 +267,7 @@ const LIMITS = {};
 
 /* ---------------------------------------------------------------- pages */
 const STATE = {items: {q: '', c: '', sc: '', qmin: '', lmin: '', lmax: '', flag: ''}, prof: {q: '', skill: '', flag: '', hideGrey: false, view: 'recipes', bop: true, slot: '', lmax: ''}, cls: {id: 0},
-  bop: {q: '', lmax: '', equipOnly: true, newOnly: false}, dq: {side: 'horde', q: ''}, route: {from: 1, to: 10}};
+  bop: {q: '', lmax: '', newOnly: false, spec: '', view: 'sets', prof: '', bopOnly: true}, dq: {side: 'horde', q: ''}, route: {from: 1, to: 10}};
 
 function pageHome() {
   const c = M.counts;
@@ -275,7 +275,7 @@ function pageHome() {
   <p>Client data from build <b>${M.build}</b>, decoded via wago.tools, compared against Classic Era <b>${M.eraBuild}</b>. Generated ${M.generated}.</p>
   <div class="tiles">
     <a class="tile" href="#/professions"><div><b>Professions</b><div class="sub">${c.recipes} recipes, ${c.newRecipes} new in Forever</div></div></a>
-    <a class="tile" href="#/bop"><div><b>BoP crafts</b><div class="sub">Profession-only gear, grouped by set</div></div></a>
+    <a class="tile" href="#/bop"><div><b>BoP crafts</b><div class="sub">Crafted gear by spec: best sets and pieces for yours</div></div></a>
     <a class="tile" href="#/dungeons"><div><b>Dungeon quests</b><div class="sub">Per instance, from Wowhead Forever</div></div></a>
     <a class="tile" href="#/items"><div><b>Items</b><div class="sub">${c.items} items, ${c.newItems} new, ${c.modItems} changed</div></div></a>
     <a class="tile" href="#/classes"><div><b>Class abilities</b><div class="sub">${c.spells} spells, ${c.newSpells} new</div></div></a>
@@ -356,6 +356,7 @@ const GEAR_COLS = [
   {h: 'Slot', r: r => M.invTypes[r.it.it] || ''},
   {h: 'Type', r: r => esc(subName(r.it.c, r.it.sc))},
   {h: 'Req', r: r => r.it.rl || '', num: true},
+  {h: 'What it gives', r: r => `<span class="small">${statShort(r.it, 50)}${r.it.ar ? ` <span class="muted">${r.it.ar} armor</span>` : ''}${r.it.dm && r.it.dm.dps ? ` <span class="muted">${r.it.dm.dps.toFixed(1)} DPS</span>` : ''}</span>`},
   {h: 'iLvl', r: r => r.it.il, num: true},
   {h: 'Quality', r: r => `<span class="q${r.it.q}">${QNAME[r.it.q]}</span>`},
   {h: 'Binds', r: r => r.it.b === 1 ? '<b>BoP</b>' : r.it.b === 2 ? 'BoE' : r.it.b === 3 ? 'BoU' : ''},
@@ -366,15 +367,7 @@ function gearTable(rows, opts) {
   opts = opts || {};
   /* coarse groups: "Veteran's Chain" and "Veteran's Silvered Chain" join "Veteran's" (a possessive first word is the set name),
      and any group joins a shorter group whose name is a whole-word prefix of it, unless that prefix is just "Robe of" / "Idol of the" */
-  const raw = [...new Set(rows.map(r => r.g))];
-  const coarse = k => {
-    const first = k.split(' ')[0];
-    if (k !== first && /('s|s')$/.test(first)) return first;
-    const pre = raw.filter(o => k.startsWith(o + ' ') && !/ (of|the|and)$/i.test(o)).sort((a, b) => a.length - b.length)[0];
-    return pre || k;
-  };
-  const groups = new Map();
-  rows.forEach(r => { const k = coarse(r.g); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
+  const groups = coarseGroups(rows);
   const minLv = k => Math.min(...groups.get(k).map(r => r.it.rl || 0));
   const keys = [...groups.keys()].sort((a, b) => (a === 'Non-equippable') - (b === 'Non-equippable') || minLv(a) - minLv(b) || a.localeCompare(b));
   let h = (opts.head ? '<thead><tr>' + GEAR_COLS.map(c => `<th>${c.h}</th>`).join('') + '</tr></thead>' : '') + '<tbody>';
@@ -402,31 +395,240 @@ function gearView(p) {
     <span class="muted small">${rows.length} items in ${groups} groups</span></div>
     <table>${gearTable(rows, {head: true})}</table>`;
 }
-function pageBop() {
+/* ---------------------------------------------------------------- crafted gear by spec (#/bop)
+   A simple, visible value model: per spec, a weight per stat (the spec's main stat = 1), weapon DPS for weapon users, armor
+   for tanks. value = sum(weight x stat) (+ DPS and armor terms); fit = the share of the item's stat points the spec uses,
+   weighted (100% = every point is the spec's main stat). Wearable = Classic armor and weapon rules per class plus the
+   item's own class restriction. Stat ids are Forever's (45 Spell Power, 41 Healing Done, 42 Damage Done, 84-89 school
+   damage, 31/32 hit/crit rating). The weights are a rough guide for comparing crafted items, not a simulation. */
+const CLASS_RULES = {
+  Warrior: {bit: 1, armor: [1, 2, 3, 4], shield: 1, weapons: [0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 15, 16, 18], dw: 1},
+  Paladin: {bit: 2, armor: [1, 2, 3, 4], shield: 1, weapons: [0, 1, 4, 5, 6, 7, 8], relic: 7},
+  Hunter: {bit: 4, armor: [1, 2, 3], weapons: [0, 1, 2, 3, 6, 7, 8, 10, 13, 15, 16, 18], dw: 1},
+  Rogue: {bit: 8, armor: [1, 2], weapons: [2, 3, 4, 7, 13, 15, 16, 18], dw: 1},
+  Priest: {bit: 16, armor: [1], weapons: [4, 10, 15, 19]},
+  Shaman: {bit: 64, armor: [1, 2, 3], shield: 1, weapons: [0, 1, 4, 5, 10, 13, 15], relic: 9},
+  Mage: {bit: 128, armor: [1], weapons: [7, 10, 15, 19]},
+  Warlock: {bit: 256, armor: [1], weapons: [7, 10, 15, 19]},
+  Druid: {bit: 1024, armor: [1, 2], weapons: [4, 5, 10, 13, 15], relic: 8},
+};
+const W_MELEE = {4: 1, 3: 0.6, 38: 0.5, 32: 0.8, 31: 0.9, 7: 0.2, 83: 0.5};
+const W_CASTER = s => ({45: 1, 42: 0.9, [s]: 0.9, 5: 0.4, 32: 0.7, 31: 0.9, 6: 0.15, 7: 0.15, 43: 0.5});
+const W_HEALER = x => Object.assign({45: 1, 41: 0.55, 5: 0.6, 43: 1.5, 6: 0.4, 32: 0.4, 7: 0.1}, x);
+const W_TANK = x => Object.assign({7: 1, 12: 1, 13: 0.9, 14: 0.8, 15: 0.5, 48: 0.3, 50: 0.1, 4: 0.5, 3: 0.6, 31: 0.4}, x);
+const SPECS = [
+  {id: 'warrior-arms', c: 'Warrior', n: 'Arms', role: 'Damage', w: W_MELEE, wd: 7},
+  {id: 'warrior-fury', c: 'Warrior', n: 'Fury', role: 'Damage', w: W_MELEE, wd: 7},
+  {id: 'warrior-prot', c: 'Warrior', n: 'Protection', role: 'Tank', w: W_TANK({}), wd: 2, wa: 0.02},
+  {id: 'paladin-holy', c: 'Paladin', n: 'Holy', role: 'Healer', w: W_HEALER({5: 0.8, 6: 0.1, 32: 0.5, 84: 0.3})},
+  {id: 'paladin-prot', c: 'Paladin', n: 'Protection', role: 'Tank', w: W_TANK({45: 0.4, 84: 0.3, 5: 0.2, 4: 0.4, 3: 0.4}), wd: 2, wa: 0.02},
+  {id: 'paladin-ret', c: 'Paladin', n: 'Retribution', role: 'Damage', w: Object.assign({}, W_MELEE, {3: 0.5, 5: 0.2, 45: 0.2, 84: 0.2}), wd: 7},
+  {id: 'hunter-bm', c: 'Hunter', n: 'Beast Mastery', role: 'Damage', w: {3: 1, 39: 0.5, 38: 0.4, 32: 0.8, 31: 0.9, 5: 0.3, 7: 0.2}, wr: 7, wd: 1},
+  {id: 'hunter-mm', c: 'Hunter', n: 'Marksmanship', role: 'Damage', w: {3: 1, 39: 0.5, 38: 0.4, 32: 0.8, 31: 0.9, 5: 0.3, 7: 0.2}, wr: 7, wd: 1},
+  {id: 'hunter-sv', c: 'Hunter', n: 'Survival', role: 'Damage', w: {3: 1, 39: 0.5, 38: 0.4, 32: 0.8, 31: 0.9, 5: 0.3, 7: 0.2, 4: 0.2}, wr: 7, wd: 2},
+  {id: 'rogue-assassination', c: 'Rogue', n: 'Assassination', role: 'Damage', w: {3: 1, 4: 0.5, 38: 0.5, 32: 0.8, 31: 0.9, 7: 0.2, 83: 0.5}, wd: 7},
+  {id: 'rogue-combat', c: 'Rogue', n: 'Combat', role: 'Damage', w: {3: 1, 4: 0.5, 38: 0.5, 32: 0.8, 31: 0.9, 7: 0.2, 83: 0.5}, wd: 7},
+  {id: 'rogue-subtlety', c: 'Rogue', n: 'Subtlety', role: 'Damage', w: {3: 1, 4: 0.5, 38: 0.5, 32: 0.8, 31: 0.9, 7: 0.2, 83: 0.5}, wd: 7},
+  {id: 'priest-disc', c: 'Priest', n: 'Discipline', role: 'Healer', w: W_HEALER({5: 0.7})},
+  {id: 'priest-holy', c: 'Priest', n: 'Holy', role: 'Healer', w: W_HEALER({6: 0.6, 84: 0.2})},
+  {id: 'priest-shadow', c: 'Priest', n: 'Shadow', role: 'Damage', w: Object.assign(W_CASTER(88), {6: 0.3, 7: 0.2})},
+  {id: 'shaman-ele', c: 'Shaman', n: 'Elemental', role: 'Damage', w: Object.assign(W_CASTER(86), {85: 0.3, 87: 0.2, 32: 0.8})},
+  {id: 'shaman-enh', c: 'Shaman', n: 'Enhancement', role: 'Damage', w: Object.assign({}, W_MELEE, {5: 0.2, 45: 0.1}), wd: 7},
+  {id: 'shaman-resto', c: 'Shaman', n: 'Restoration', role: 'Healer', w: W_HEALER({6: 0.2})},
+  {id: 'mage-arcane', c: 'Mage', n: 'Arcane', role: 'Damage', w: Object.assign(W_CASTER(89), {5: 0.5, 6: 0.2})},
+  {id: 'mage-fire', c: 'Mage', n: 'Fire', role: 'Damage', w: W_CASTER(85)},
+  {id: 'mage-frost', c: 'Mage', n: 'Frost', role: 'Damage', w: W_CASTER(87)},
+  {id: 'warlock-aff', c: 'Warlock', n: 'Affliction', role: 'Damage', w: Object.assign(W_CASTER(88), {32: 0.4, 7: 0.4, 6: 0.2})},
+  {id: 'warlock-demo', c: 'Warlock', n: 'Demonology', role: 'Damage', w: Object.assign(W_CASTER(88), {32: 0.5, 7: 0.5})},
+  {id: 'warlock-destro', c: 'Warlock', n: 'Destruction', role: 'Damage', w: Object.assign(W_CASTER(85), {88: 0.6, 32: 0.8})},
+  {id: 'druid-balance', c: 'Druid', n: 'Balance', role: 'Damage', w: Object.assign(W_CASTER(89), {86: 0.9, 6: 0.2})},
+  {id: 'druid-feral', c: 'Druid', n: 'Feral', role: 'Damage / tank', w: {3: 1, 4: 0.9, 38: 0.5, 32: 0.8, 31: 0.8, 7: 0.5, 13: 0.5, 12: 0.4}, wa: 0.02},
+  {id: 'druid-resto', c: 'Druid', n: 'Restoration', role: 'Healer', w: W_HEALER({6: 0.6, 86: 0.2})},
+];
+SPECS.forEach(s => { s.max = Math.max(...Object.values(s.w)); s.label = `${s.n} ${s.c}`; });
+const SPEC_BY_ID = Object.fromEntries(SPECS.map(s => [s.id, s]));
+const SLOT_GROUPS = [['Head', [1]], ['Neck', [2]], ['Shoulder', [3]], ['Back', [16]], ['Chest', [5, 20]], ['Wrist', [9]], ['Hands', [10]], ['Waist', [6]],
+  ['Legs', [7]], ['Feet', [8]], ['Finger', [11]], ['Trinket', [12]], ['Two-hand weapon', [17]], ['One-hand / main hand', [13, 21]],
+  ['Off hand', [14, 22, 23]], ['Ranged / relic', [15, 25, 26, 28]]];
+const MELEE_SLOTS = new Set([13, 17, 21, 22]), RANGED_SLOTS = new Set([15, 25, 26]);
+const STAT_SHORT = {3: 'Agi', 4: 'Str', 5: 'Int', 6: 'Spi', 7: 'Sta', 12: 'Defense', 13: 'Dodge', 14: 'Parry', 15: 'Block', 31: 'Hit', 32: 'Crit', 36: 'Haste',
+  38: 'AP', 39: 'Ranged AP', 41: 'Healing', 42: 'Spell Dmg', 43: 'Mp5', 45: 'Spell Power', 48: 'Block Value', 50: 'Armor', 51: 'Fire Res', 52: 'Frost Res',
+  53: 'Holy Res', 54: 'Shadow Res', 55: 'Nature Res', 56: 'Arcane Res', 83: 'Weapon Dmg', 84: 'Holy Dmg', 85: 'Fire Dmg', 86: 'Nature Dmg', 87: 'Frost Dmg',
+  88: 'Shadow Dmg', 89: 'Arcane Dmg'};
+const statName = id => STAT_SHORT[id] || STAT_LABEL[id] || M.stats[id] || 'Stat ' + id;
+function statShort(it, max) {
+  const parts = sortStats(it.s || []).map(s => `${s[1] > 0 ? '+' : ''}${s[1]} ${statName(s[0])}`);
+  (it.fx || []).forEach(f => { if (f[0] === 1 || f[0] === 2) { const sp = SPELLS[f[1]]; const t = sp && (f[0] === 1 ? (sp.ad || sp.d) : (sp.d || sp.ad)); if (t) parts.push(`<span class="g" title="${esc(t)}">${f[0] === 1 ? 'Equip' : 'Hit'}: ${esc(t.length > (max || 60) ? t.slice(0, max || 60) + '…' : t)}</span>`); } });
+  return parts.join(' · ');
+}
+function specWearable(spec, it) {
+  const R = CLASS_RULES[spec.c];
+  if (it.ac && !(it.ac & R.bit)) return false;
+  if (it.c === 4) {
+    if (it.sc === 6) return !!R.shield;
+    if (it.sc >= 7 && it.sc <= 9) return R.relic === it.sc;
+    if (it.sc >= 1 && it.sc <= 4 && ![2, 11, 12, 16].includes(it.it)) return R.armor.includes(it.sc);
+    return true;
+  }
+  if (it.c === 2) {
+    if (!R.weapons.includes(it.sc)) return false;
+    if (it.it === 22 && !R.dw) return false;
+  }
+  return true;
+}
+function specScore(spec, it) {
+  if (!specWearable(spec, it)) return null;
+  let v = 0, pts = 0;
+  (it.s || []).forEach(([id, val]) => { if (RESIST.has(id) || val <= 0) return; v += (spec.w[id] || 0) * val; pts += val; });
+  const statV = v;
+  if (it.dm && it.dm.dps) {
+    /* tanks use one hand and a shield: a two-hander's DPS is no use to them; hunters' ranged DPS counts for bows, guns and
+       crossbows only (Forever files some tools, like the Arcanite Blacksmith Hammer, as thrown weapons) */
+    if (MELEE_SLOTS.has(it.it) && !(spec.role === 'Tank' && it.it === 17)) v += (spec.wd || 0) * it.dm.dps * (it.it === 17 ? 1.3 : 1);
+    if (RANGED_SLOTS.has(it.it) && it.c === 2 && [2, 3, 18].includes(it.sc)) v += (spec.wr || 0) * it.dm.dps;
+  }
+  if (spec.wa && it.ar) v += spec.wa * it.ar;
+  return {v: Math.round(v), fit: pts ? statV / (pts * spec.max) : null};
+}
+/* coarse gear groups: "Veteran's Chain" and "Veteran's Silvered Chain" join "Veteran's" (a possessive first word is the set
+   name), and a group joins a shorter group whose name is a whole-word prefix of it, unless that prefix is "Robe of" / "Idol of the" */
+function coarseGroups(rows) {
+  const raw = [...new Set(rows.map(r => r.g))];
+  const coarse = k => {
+    const first = k.split(' ')[0];
+    if (k !== first && /('s|s')$/.test(first)) return first;
+    const pre = raw.filter(o => k.startsWith(o + ' ') && !/ (of|the|and)$/i.test(o)).sort((a, b) => a.length - b.length)[0];
+    return pre || k;
+  };
+  const groups = new Map();
+  rows.forEach(r => { const k = coarse(r.g); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(r); });
+  return groups;
+}
+function armorKind(rows) {
+  const kinds = [...new Set(rows.map(r => r.it.c === 2 ? 'Weapon' : r.it.c === 4 && r.it.sc >= 1 && r.it.sc <= 4 && ![16].includes(r.it.it) ? subName(4, r.it.sc) : r.it.c === 4 && r.it.sc === 6 ? 'Shield' : 'Accessory'))];
+  return kinds.length > 2 ? 'Mixed' : kinds.join(' / ');
+}
+function bopRows(st) {
+  return PROFS.filter(p => !st.prof || String(p.id) === st.prof).flatMap(p => craftedRows(p, {bop: st.bopOnly, equipOnly: true, lmax: st.lmax, flag: st.newOnly ? 'new' : '', q: st.q}));
+}
+function pageBop(params) {
   const st = STATE.bop;
-  let h = `<h1>BoP crafts by profession</h1>
-  <p class="muted">Everything a profession can craft that binds when picked up: gear you can only get by having the profession yourself. Grouped by the shared part of the item names, sorted by required level.</p>
-  <div class="filters">
-    <input id="bp-q" placeholder="Filter items" value="${esc(st.q)}">
-    <label>Req level ≤ <input id="bp-lmax" type="number" min="1" max="60" style="width:60px" value="${esc(st.lmax)}"></label>
-    <label><input id="bp-equip" type="checkbox" ${st.equipOnly ? 'checked' : ''}> equippable only</label>
-    <label><input id="bp-new" type="checkbox" ${st.newOnly ? 'checked' : ''}> new in Forever only</label>
-  </div>`;
-  const sections = PROFS.map(p => ({p, rows: craftedRows(p, {bop: true, equipOnly: st.equipOnly, lmax: st.lmax, flag: st.newOnly ? 'new' : '', q: st.q})})).filter(x => x.rows.length);
-  h += `<div class="tabs">${sections.map(x => `<a href="#/bop" data-scroll="bop-${x.p.id}">${esc(x.p.n)} <span class="muted small">${x.rows.length}</span></a>`).join('')}</div>`;
-  sections.forEach(x => {
-    h += `<h2 id="bop-${x.p.id}">${icon(x.p.ic)}<a href="#/profession/${x.p.id}?view=gear">${esc(x.p.n)}</a> <span class="muted small">${x.rows.length} BoP items</span></h2><table>${gearTable(x.rows, {head: true})}</table>`;
-  });
-  if (!sections.length) h += '<p class="muted">Nothing matches.</p>';
+  ['spec', 'view', 'prof', 'lmax'].forEach(k => { if (params[k] != null) st[k] = params[k]; });
+  if (params.all != null) st.bopOnly = params.all !== '1';
+  const spec = SPEC_BY_ID[st.spec] || null;
+  const rows = bopRows(st);
+  const specOpts = Object.keys(CLASS_RULES).map(c => `<optgroup label="${c}">${SPECS.filter(s => s.c === c).map(s => `<option value="${s.id}" ${st.spec === s.id ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</optgroup>`).join('');
+  const profs = PROFS.filter(p => p.recipes.some(sid => { const s = SPELLS[sid]; const it = s.cr && ITEMS[s.cr[0]]; return it && it.it && it.it !== 18 && it.it !== 24 && it.it !== 27 && (!st.bopOnly || it.b === 1); }));
+  const view = st.view || 'sets';
+  let h = `<h1>Crafted gear by spec</h1>
+  <p class="muted">Every piece of gear a profession can make${st.bopOnly ? ' that binds when picked up: gear you only get by having the profession yourself' : ''}. Pick your spec to see which sets are worth it and the best piece per slot; pick your level to see what you can wear now.</p>
+  <div class="bop-controls">
+    <label class="bop-ctl"><span>Spec</span><select id="bp-spec"><option value="">Any spec</option>${specOpts}</select></label>
+    <label class="bop-ctl"><span>Your level</span><input id="bp-lmax" type="number" min="1" max="60" placeholder="any" value="${esc(st.lmax)}"></label>
+    <label class="bop-ctl"><span>Profession</span><select id="bp-prof"><option value="">All</option>${profs.map(p => `<option value="${p.id}" ${st.prof === String(p.id) ? 'selected' : ''}>${esc(p.n)}</option>`).join('')}</select></label>
+    <label class="bop-ctl"><span>Search</span><input id="bp-q" placeholder="item name" value="${esc(st.q)}"></label>
+    <label class="bop-chk"><input id="bp-bop" type="checkbox" ${st.bopOnly ? 'checked' : ''}> binds on pickup only</label>
+    <label class="bop-chk"><input id="bp-new" type="checkbox" ${st.newOnly ? 'checked' : ''}> new in Forever only</label>
+  </div>
+  <div class="tabs bop-views">${[['sets', 'Sets'], ['slots', 'Best per slot'], ['items', 'All items']].map(([v, t]) => `<a href="#" data-bopview="${v}" class="${view === v ? 'on' : ''}">${t}</a>`).join('')}</div>`;
+  if (!rows.length) return h + '<p class="muted">Nothing matches.</p>';
+  if (view === 'slots') h += bopSlots(rows, spec, st);
+  else if (view === 'items') h += bopItems(rows, spec);
+  else h += bopSets(rows, spec);
+  h += `<details class="small muted bop-model"><summary>How "value" and "fit" are worked out</summary>
+    <p>Each spec has a weight per stat, its main stat counting 1 (below). <b>Value</b> = the sum of weight × stat, plus weapon DPS for weapon users (×7 per DPS for melee and hunters' ranged weapons, two-handers ×1.3) and armor for tanks (×0.02). <b>Fit</b> = how much of the item's stat points the spec uses, weighted: 100% means every point is the spec's main stat; resistances are left out. An item counts only if the class can wear it (Classic armor and weapon rules, and the item's own class list). It is a rough guide for comparing crafted pieces, not a simulation.</p>
+    ${spec ? `<p><b>${esc(spec.label)}</b>: ${Object.entries(spec.w).sort((a, b) => b[1] - a[1]).map(([id, w]) => `${esc(statName(+id))} ${w}`).join(', ')}${spec.wd ? `; weapon DPS ${spec.wd}` : ''}${spec.wr ? `; ranged DPS ${spec.wr}` : ''}${spec.wa ? `; armor ${spec.wa}` : ''}</p>` : '<p>Pick a spec to see its weights.</p>'}</details>`;
   return h;
+}
+const fitPct = f => f == null ? '' : Math.round(f * 100) + '%';
+function bopSets(rows, spec) {
+  const groups = [...coarseGroups(rows).entries()].map(([name, g]) => {
+    g.sort((a, b) => (a.it.rl || 0) - (b.it.rl || 0) || a.it.it - b.it.it || a.it.n.localeCompare(b.it.n));
+    const lv = g.map(r => r.it.rl || 0);
+    const total = {};
+    g.forEach(r => (r.it.s || []).forEach(([id, v]) => { if (v > 0) total[id] = (total[id] || 0) + v; }));
+    const pts = Object.entries(total).filter(([id]) => !RESIST.has(+id)).reduce((s, [, v]) => s + v, 0);
+    const fitFor = sp => { const worn = g.filter(r => specWearable(sp, r.it)); if (!worn.length || !pts) return null;
+      let v = 0, p = 0; worn.forEach(r => (r.it.s || []).forEach(([id, val]) => { if (!RESIST.has(id) && val > 0) { v += (sp.w[id] || 0) * val; p += val; } }));
+      return {fit: p ? v / (p * sp.max) : 0, share: worn.length / g.length}; };
+    const good = SPECS.map(sp => ({sp, f: fitFor(sp)})).filter(x => x.f && x.f.share >= 0.5 && x.f.fit >= 0.55).sort((a, b) => b.f.fit - a.f.fit);
+    const setIds = [...new Set(g.map(r => r.it.set).filter(Boolean))].filter(id => SETS[id]);
+    return {name, g, lo: Math.min(...lv), hi: Math.max(...lv), total, good, mine: spec ? fitFor(spec) : null, setIds, profs: [...new Set(g.map(r => r.p.n))]};
+  });
+  /* sets (2+ pieces) as cards: for a spec, great fits first, then ok, then poor, each by level (a progression); single
+     pieces go to a table below, by value */
+  const bucket = x => !x.mine ? 3 : x.mine.fit >= 0.7 ? 0 : x.mine.fit >= 0.5 ? 1 : 2;
+  let list = spec ? groups.filter(x => x.mine && x.mine.share > 0) : groups;
+  const hidden = groups.length - list.length;
+  const singles = list.filter(x => x.g.length === 1);
+  list = list.filter(x => x.g.length > 1).sort((a, b) => (spec ? bucket(a) - bucket(b) : 0) || a.lo - b.lo || a.name.localeCompare(b.name));
+  const card = x => {
+    const slots = [...new Set(x.g.map(r => M.invTypes[r.it.it]))].filter(Boolean);
+    const totals = sortStats(Object.entries(x.total).map(([id, v]) => [+id, v])).map(([id, v]) => `+${v} ${esc(statName(id))}`).join(' · ');
+    const worth = spec && x.mine ? (x.mine.fit >= 0.7 ? 'great' : x.mine.fit >= 0.5 ? 'ok' : 'poor') : '';
+    return `<div class="bop-card ${worth}">
+      <div class="bop-card-head"><b class="bop-card-name">${esc(x.name)}</b> <span class="muted small">${esc(x.profs.join(', '))}</span></div>
+      <div class="small"><span class="pill-s">${esc(armorKind(x.g))}</span> level ${x.lo === x.hi ? x.lo : x.lo + '–' + x.hi} · ${x.g.length} piece${x.g.length > 1 ? 's' : ''}: ${esc(slots.join(', '))}</div>
+      ${spec && x.mine ? `<div class="bop-fit ${worth}">Fit for ${esc(spec.label)}: <b>${fitPct(x.mine.fit)}</b>${x.mine.share < 1 ? ` <span class="muted small">(${Math.round(x.mine.share * x.g.length)} of ${x.g.length} pieces wearable)</span>` : ''}</div>` : ''}
+      <div class="small bop-totals" title="All pieces together">${totals || '<span class="muted">no stats</span>'}</div>
+      ${x.setIds.map(id => `<div class="small bop-setbonus"><a href="#/set/${id}">${esc(SETS[id].n)}</a>: ${SETS[id].b.map(b => `(${b[0]}) ${esc(SPELLS[b[1]] ? (SPELLS[b[1]].d || SPELLS[b[1]].ad || SPELLS[b[1]].n) : '')}`).join(' · ')}</div>`).join('')}
+      ${x.good.length ? `<div class="small muted">Good for: ${x.good.slice(0, 4).map(o => `<a href="#/bop?spec=${o.sp.id}&view=sets" title="fit ${fitPct(o.f.fit)}">${esc(o.sp.label)}</a>`).join(', ')}${x.good.length > 4 ? ` +${x.good.length - 4}` : ''}</div>` : ''}
+      <details class="bop-pieces"><summary class="small">the ${x.g.length} piece${x.g.length > 1 ? 's' : ''}</summary><table class="bop-mini">${x.g.map(r => { const sc = spec ? specScore(spec, r.it) : null;
+        return `<tr${spec && !sc ? ' class="bop-no"' : ''}><td>${itemLink(r.s.cr[0])}</td><td class="small">${esc(M.invTypes[r.it.it] || '')}</td><td class="num small">${r.it.rl || ''}</td><td class="small">${statShort(r.it, 50)}${r.it.ar ? ` <span class="muted">${r.it.ar} armor</span>` : ''}${r.it.dm && r.it.dm.dps ? ` <span class="muted">${r.it.dm.dps.toFixed(1)} DPS</span>` : ''}</td>${spec ? `<td class="num small">${sc ? sc.v : '<span class="muted" title="Your class cannot wear it">–</span>'}</td>` : ''}</tr>`; }).join('')}</table></details>
+    </div>`;
+  };
+  const singleRows = singles.map(x => ({x, r: x.g[0], sc: spec ? specScore(spec, x.g[0].it) : null})).filter(o => !spec || o.sc)
+    .sort((a, b) => spec ? b.sc.v - a.sc.v : (a.r.it.rl || 0) - (b.r.it.rl || 0));
+  return `<p class="small muted">${spec ? `Sets ${esc(spec.label)} can wear: <b style="color:#5fd67f">great fit</b> first, then <b style="color:#e8c65a">ok</b>, then <b style="color:#e07470">poor</b> (most stats wasted), each by level.${hidden ? ` ${hidden} groups your class cannot wear are hidden.` : ''}` : 'Sets and item families of two or more pieces, by level. "Good for" names the specs whose stats they match; pick a spec to rank them for you.'}</p>
+  <div class="bop-cards">${list.map(card).join('')}</div>
+  ${singleRows.length ? `<h2>Single pieces <span class="muted small">${singleRows.length}${spec ? ', best value first' : ''}</span></h2>
+  <div class="tablewrap"><table><thead><tr><th>Item</th><th>Slot</th><th class="num">Req</th><th>What it gives</th>${spec ? '<th class="num">Value</th><th class="num">Fit</th>' : '<th>Good for</th>'}<th>Profession</th></tr></thead><tbody>${singleRows.map(({x, r, sc}) => `<tr>
+    <td>${itemLink(r.s.cr[0])}</td><td class="small">${esc(M.invTypes[r.it.it] || '')}</td><td class="num">${r.it.rl || ''}</td>
+    <td class="small">${statShort(r.it, 60)}${r.it.ar ? ` <span class="muted">${r.it.ar} armor</span>` : ''}${r.it.dm && r.it.dm.dps ? ` <span class="muted">${r.it.dm.dps.toFixed(1)} DPS</span>` : ''}</td>
+    ${spec ? `<td class="num"><b>${sc.v}</b></td><td class="num">${fitPct(sc.fit)}</td>` : `<td class="small muted">${x.good.slice(0, 3).map(o => esc(o.sp.label)).join(', ')}</td>`}<td class="small">${esc(r.p.n)}</td></tr>`).join('')}</tbody></table></div>` : ''}`;
+}
+function bopSlots(rows, spec, st) {
+  if (!spec) return `<p class="bop-pick">Pick your spec above: this view ranks every crafted piece your class can wear, slot by slot.</p>`;
+  const scored = rows.map(r => ({r, sc: specScore(spec, r.it)})).filter(x => x.sc && x.sc.v > 0);
+  const quick = [20, 30, 40, 50, 60].map(l => `<a href="#/bop?spec=${spec.id}&view=slots&lmax=${l}" class="${String(st.lmax) === String(l) ? 'on' : ''}">≤ ${l}</a>`).join('');
+  return `<p class="small muted">The best crafted pieces for <b>${esc(spec.label)}</b>${st.lmax ? ` at level ${esc(st.lmax)} or below` : ' at any level'}, three per slot. <span class="tabs bop-lv">${quick}<a href="#/bop?spec=${spec.id}&view=slots&lmax=" class="${st.lmax ? '' : 'on'}">any</a></span></p>
+  <div class="bop-slots">${SLOT_GROUPS.map(([name, types]) => {
+    const best = scored.filter(x => types.includes(x.r.it.it)).sort((a, b) => b.sc.v - a.sc.v || (b.r.it.rl || 0) - (a.r.it.rl || 0)).slice(0, 3);
+    return `<div class="bop-slot"><div class="bop-slot-name">${esc(name)}</div>${best.length ? best.map((x, i) => `<div class="bop-slot-item${i ? ' alt' : ''}">
+      <div>${itemLink(x.r.s.cr[0])} <span class="muted small">level ${x.r.it.rl || 1} · ${esc(x.r.p.n)}</span></div>
+      <div class="small">${statShort(x.r.it, 45)}${x.r.it.dm && x.r.it.dm.dps ? ` <span class="muted">${x.r.it.dm.dps.toFixed(1)} DPS</span>` : ''}</div>
+      <div class="small muted">value ${x.sc.v} · fit ${fitPct(x.sc.fit)} · ${spellLink(x.r.sid, {noicon: true})} ${skillCell(x.r.s.sk, 0, x.r.s)}</div></div>`).join('') : '<div class="small muted">nothing craftable</div>'}</div>`;
+  }).join('')}</div>`;
+}
+function bopItems(rows, spec) {
+  const list = rows.map(r => ({r, sc: spec ? specScore(spec, r.it) : null})).filter(x => !spec || x.sc);
+  list.sort((a, b) => spec ? (b.sc.v - a.sc.v) : ((a.r.it.rl || 0) - (b.r.it.rl || 0) || a.r.it.it - b.r.it.it));
+  return `<p class="small muted">${list.length} items${spec ? `, best value for ${esc(spec.label)} first` : ', by level'}.</p>
+  <div class="tablewrap"><table><thead><tr><th>Item</th><th>Slot</th><th>Type</th><th class="num">Req</th><th>What it gives</th>${spec ? '<th class="num">Value</th><th class="num">Fit</th>' : ''}<th>Profession</th><th>Recipe</th></tr></thead><tbody>${list.map(({r, sc}) => `<tr>
+    <td>${itemLink(r.s.cr[0], {badges: true})}</td><td class="small">${esc(M.invTypes[r.it.it] || '')}</td><td class="small">${esc(subName(r.it.c, r.it.sc))}</td><td class="num">${r.it.rl || ''}</td>
+    <td class="small">${statShort(r.it, 70)}${r.it.ar ? ` <span class="muted">${r.it.ar} armor</span>` : ''}${r.it.dm && r.it.dm.dps ? ` <span class="muted">${r.it.dm.dps.toFixed(1)} DPS</span>` : ''}</td>
+    ${spec ? `<td class="num"><b>${sc.v}</b></td><td class="num">${fitPct(sc.fit)}</td>` : ''}<td class="small">${esc(r.p.n)}</td><td class="small">${spellLink(r.sid, {noicon: true})} <span class="muted">${skillCell(r.s.sk, 0, r.s)}</span></td></tr>`).join('')}</tbody></table></div>`;
 }
 function bindBop() {
   const st = STATE.bop;
-  const q = $('#bp-q'); if (!q) return;
-  q.addEventListener('input', () => { st.q = q.value; rerenderKeepFocus('#bp-q'); });
-  $('#bp-lmax').addEventListener('input', e => { st.lmax = e.target.value; rerenderKeepFocus('#bp-lmax'); });
-  $('#bp-equip').addEventListener('change', e => { st.equipOnly = e.target.checked; render(); });
-  $('#bp-new').addEventListener('change', e => { st.newOnly = e.target.checked; render(); });
+  const go = () => {
+    const p = new URLSearchParams();
+    if (st.spec) p.set('spec', st.spec);
+    if (st.view && st.view !== 'sets') p.set('view', st.view);
+    if (st.prof) p.set('prof', st.prof);
+    if (st.lmax) p.set('lmax', st.lmax);
+    if (!st.bopOnly) p.set('all', '1');
+    const want = '#/bop' + (p.toString() ? '?' + p : '');
+    if (location.hash !== want) location.hash = want; else render();
+  };
+  const on = (sel, ev, fn) => { const el = $(sel); if (el) el.addEventListener(ev, fn); };
+  on('#bp-spec', 'change', e => { st.spec = e.target.value; go(); });
+  on('#bp-prof', 'change', e => { st.prof = e.target.value; go(); });
+  on('#bp-lmax', 'change', e => { st.lmax = e.target.value; go(); });
+  on('#bp-q', 'input', e => { st.q = e.target.value; rerenderKeepFocus('#bp-q'); });
+  on('#bp-bop', 'change', e => { st.bopOnly = e.target.checked; go(); });
+  on('#bp-new', 'change', e => { st.newOnly = e.target.checked; render(); });
+  document.querySelectorAll('a[data-bopview]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); st.view = a.dataset.bopview; go(); }));
 }
 
 function pageProfession(id, params) {
@@ -1355,7 +1557,7 @@ function render() {
     case 'new': html = pageNew(); break;
     case 'search': html = pageSearch(params); break;
     case 'patches': html = pagePatches(params); break;
-    case 'bop': html = pageBop(); break;
+    case 'bop': html = pageBop(params); break;
     case 'dungeons': html = pageDungeons(); break;
     case 'collected': html = pageCollected(); break;
     case 'quest': html = pageQuest(id); break;

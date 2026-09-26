@@ -147,3 +147,32 @@ ul.prep-inside label { cursor: pointer; }
 .prep-tag.solo { background: #3a4050; color: #dde; }
 .prep-stepno { font-size: 11px; color: var(--gold); font-weight: 600; }
 .prep-next { margin: 0 0 4px; color: #cfc6a8; }
+/* crafted gear by spec (#/bop) */
+.bop-controls { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #15181e; margin: 10px 0; }
+.bop-ctl { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: #aab; }
+.bop-ctl select, .bop-ctl input { min-width: 120px; }
+.bop-ctl input[type=number] { width: 70px; min-width: 0; }
+.bop-chk { font-size: 13px; padding-bottom: 4px; }
+.bop-views { margin: 8px 0 10px; }
+.bop-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
+.bop-card { border: 1px solid var(--line); border-left: 3px solid #4a5060; border-radius: 8px; padding: 10px 12px; background: #15181e; display: flex; flex-direction: column; gap: 5px; }
+.bop-card.great { border-left-color: #3fbf5f; }
+.bop-card.ok { border-left-color: #d9b64a; }
+.bop-card.poor { border-left-color: #c0504d; opacity: .85; }
+.bop-card-name { font-size: 15px; color: var(--gold); }
+.bop-fit.great b { color: #5fd67f; } .bop-fit.ok b { color: #e8c65a; } .bop-fit.poor b { color: #e07470; }
+.bop-totals { color: #dfe3ea; }
+.bop-setbonus { color: #7fd17f; }
+.pill-s { display: inline-block; font-size: 11px; padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; color: #cfd3dc; }
+.bop-pieces summary { cursor: pointer; color: #aab; }
+table.bop-mini { width: 100%; margin-top: 4px; font-size: 12px; }
+table.bop-mini td { padding: 3px 4px; }
+tr.bop-no td { opacity: .45; }
+.bop-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 10px; }
+.bop-slot { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: #15181e; }
+.bop-slot-name { font-weight: 700; color: var(--gold); margin-bottom: 4px; }
+.bop-slot-item { padding: 5px 0; }
+.bop-slot-item.alt { border-top: 1px dashed var(--line); opacity: .85; }
+.bop-lv a { padding: 2px 8px; }
+.bop-pick { padding: 14px; border: 1px dashed var(--line); border-radius: 8px; text-align: center; }
+.bop-model { margin-top: 18px; }
