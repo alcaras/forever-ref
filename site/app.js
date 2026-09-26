@@ -1177,8 +1177,9 @@ function prepQuest(id) {
   const seen = cq && cq.xp != null && (cq.ender || cq.xp > 0);   /* a corpse or object turn-in records no ender */
   return {n, w, link, ext: !q && !w, rl: (w && w.rl) || (q && q.rl) || 0, xp: seen ? cq.xp : fxp(w), seen};
 }
-function prepQuestLine(id, text, step) {
+function prepQuestLine(id, text, step, name) {
   const p = prepQuest(id);
+  if (name) p.n = name;
   const xpText = p.seen ? (p.xp ? `<span title="What the game gave when you turned it in (AlcCollect)">${p.xp.toLocaleString()} XP ✓</span>` : '<span title="Turned in with AlcCollect running: no XP">no XP ✓</span>') : p.xp ? `${p.xp.toLocaleString()} XP` : '';
   const bits = [p.rl ? `needs ${p.rl}` : '', xpText].filter(Boolean).join(' · ');
   const rew = p.w && (p.w.rew || p.w.choice) ? `<div class="prep-rew">${questRewards(p.w).replace(/<br>/g, ' ')}</div>` : '';
@@ -1190,12 +1191,13 @@ function prepGuide(zone) {
   if (!g) return '';
   const place = (area, x, y) => `${esc(ZONE_NAME[area] || '')}${x != null ? ` <span class="muted">${x}, ${y}</span>` : ''}`;
   /* the dungeon's Horde quests and their total XP, for the summary */
-  const horde = d ? d.quests.filter(q => questSideOk(q, 'horde') && q.xp) : [];
+  const side = g.side || 'horde', Side = side === 'alliance' ? 'Alliance' : 'Horde';
+  const horde = d ? d.quests.filter(q => questSideOk(q, side) && q.xp) : [];
   const total = horde.reduce((s, q) => s + fxp(q), 0);
-  let h = `<p class="muted">Quest guide, Horde: where to pick up each quest, in a sensible order, what to do inside, and where to hand them in. Everything else is under Details at the bottom.</p>
+  let h = `<p class="muted">Quest guide, ${Side}: where to pick up each quest, in a sensible order, what to do inside, and where to hand them in. Everything else is under Details at the bottom.</p>
   <div class="prep-summary"><p>${esc(g.summary)}</p>
     <div class="tiles"><div class="tile"><div><b>${esc(g.level.split('. ').pop().replace(/\.$/, ''))}</b><div class="sub">${esc(g.level.split('. ').slice(0, -1).join('. '))}</div></div></div>
-    <div class="tile"><div><b>${horde.length}</b><div class="sub">Horde quests with XP in this dungeon</div></div></div>
+    <div class="tile"><div><b>${horde.length}</b><div class="sub">${Side} quests with XP in this dungeon</div></div></div>
     ${total ? `<div class="tile"><div><b>${total.toLocaleString()}</b><div class="sub">XP for all of them on Forever (dungeon quests give about 3x their Classic XP)</div></div></div>` : ''}</div>
     <p class="small"><b>Entrance:</b> ${esc(g.entrance.t)}${g.entrance.area ? ` <span class="muted">(${place(g.entrance.area, g.entrance.x, g.entrance.y)})</span>` : ''}</p></div>`;
   /* which chain (and step) each quest belongs to; quests in no chain are one-offs */
@@ -1209,11 +1211,11 @@ function prepGuide(zone) {
       if (ch && last && last.ch && last.ch.ci === ch.ci) last.items.push(p); else groups.push({ch, items: [p]});
     });
     return groups.map(gr => {
-      if (!gr.ch) return `<div class="prep-group solo"><span class="prep-tag solo" title="Not part of a chain: pick it up, do it, hand it in">one-off</span><ul class="prep-quests">${gr.items.map(p => prepQuestLine(p.q, p.t)).join('')}</ul></div>`;
+      if (!gr.ch) return `<div class="prep-group solo"><span class="prep-tag solo" title="Not part of a chain: pick it up, do it, hand it in">one-off</span><ul class="prep-quests">${gr.items.map(p => prepQuestLine(p.q, p.t, 0, p.n)).join('')}</ul></div>`;
       const c = gr.ch.c, first = gr.ch.si, lastSi = chainOf[gr.items[gr.items.length - 1].q].si, n = c.steps.length;
       const next = c.steps[lastSi + 1];
       return `<div class="prep-group chain"><span class="prep-tag chain">chain</span> <b>${esc(c.name)}</b> <span class="muted small">${first === lastSi ? `step ${first + 1}` : `steps ${first + 1}–${lastSi + 1}`} of ${n}</span>
-        <ul class="prep-quests">${gr.items.map(p => prepQuestLine(p.q, p.t, chainOf[p.q].si + 1)).join('')}</ul>
+        <ul class="prep-quests">${gr.items.map(p => prepQuestLine(p.q, p.t, chainOf[p.q].si + 1, p.n)).join('')}</ul>
         ${next ? `<div class="small prep-next">then step ${lastSi + 2}: ${esc(next.n || prepQuest(next.q).n)} <span class="prep-where">${esc(stepWhere(next))}</span></div>` : '<div class="small prep-next">last step of the chain</div>'}</div>`;
     }).join('');
   };
@@ -1240,7 +1242,7 @@ function prepGuide(zone) {
   /* 3: turn in */
   h += `<h2><span class="prep-num">3</span> Hand them in</h2><ol class="prep-stops">${g.after.map(a => `<li class="prep-stop"><div class="prep-stop-text"><b>${esc(a.title)}</b> <span class="muted small">${place(a.area, a.x, a.y)}</span><div class="small">${esc(a.t)}</div></div>${prepMap(a.area, [[a.x, a.y]], 200)}</li>`).join('')}</ol>`;
   if (g.tips && g.tips.length) h += `<h2>Tips</h2><ul>${g.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>`;
-  h += `<p class="muted small" style="margin-top:20px">Sources: Wowhead Forever quest and NPC pages (starters, objectives, chains, coordinates), QuestieDB (prerequisites, drops), <a class="ext" href="${esc(g.guide)}" target="_blank">the Mobalytics guide</a> (tips, in-dungeon spots); researched 2026-09-26. Details, below, lists every quest with its rewards, both factions.</p>`;
+  h += `<p class="muted small" style="margin-top:20px">Sources: Wowhead Forever quest and NPC pages (starters, objectives, chains, coordinates), QuestieDB (prerequisites, drops, spawn points)${g.guide ? `, <a class="ext" href="${esc(g.guide)}" target="_blank">the Mobalytics guide</a> (tips, in-dungeon spots)` : ''}; researched 2026-09-26. Details, below, lists every quest with its rewards, both factions.</p>`;
   return h;
 }
 

@@ -150,4 +150,107 @@ window.FR_PREP = {
            'Two optional bosses (The Abandoned, Viktor the Vile) are summoned with waves of adds; neither is needed for a quest.'],
     guide: 'https://mobalytics.gg/wow-forever/dungeons/ruins-of-lordaeron-dungeon-guide',
   },
+
+  209: {
+    n: 'Shadowfang Keep',
+    entrance: {t: 'Silverpine Forest: the keep on the hill south of the Sepulcher, north-west of Pyrewood Village'},
+    level: 'Quests need level 16–18; the dungeon is 18–25, and 20–22 is comfortable (Mobalytics). Go at 20–22.',
+    summary: 'Three Horde quests, no chains: two from the Sepulcher in Silverpine, one from Undercity. On Forever they give about 4.35x their Classic XP, so these three alone are over 32,000 XP (Arugal Must Die: 14,355).',
+    stops: [
+      {title: 'High Executor Hadrec', area: 130, x: 43.4, y: 40.8, where: 'Silverpine Forest, the Sepulcher',
+       pick: [{q: 1098, t: 'Deathstalkers in Shadowfang: find Deathstalker Adamant and Deathstalker Vincent inside (it ends inside, at Vincent)'}]},
+      {title: 'Dalar Dawnweaver', area: 130, x: 44.2, y: 39.8, where: 'Silverpine Forest, the Sepulcher',
+       pick: [{q: 1014, t: 'Arugal Must Die: bring back Arugal\'s head (Seal of Sylvanas)'}]},
+      {title: 'Keeper Bel\'dugur', area: 1497, x: 53.4, y: 53.4, where: 'Undercity, the Apothecarium',
+       pick: [{q: 1013, t: 'The Book of Ur: a book lying inside the keep'}]},
+    ],
+    chains: [],
+    inside: [
+      {q: 1098, t: 'Deathstalker Adamant is held in the cells near Rethilgore at the start; Deathstalker Vincent is further in. Talking to Vincent completes the quest on the spot'},
+      {q: 1013, t: 'The Book of Ur: a book you click, inside the keep'},
+      {q: 1014, t: 'Archmage Arugal, the last boss: take his head'},
+    ],
+    after: [
+      {title: 'Silverpine Forest, the Sepulcher', area: 130, x: 44.2, y: 39.8, t: 'Dalar Dawnweaver (Arugal Must Die). Deathstalkers in Shadowfang was already handed in inside, to Vincent'},
+      {title: 'Undercity, the Apothecarium', area: 1497, x: 53.4, y: 53.4, t: 'Keeper Bel\'dugur (The Book of Ur: Grizzled Boots or Steel-clasped Bracers)'},
+    ],
+    tips: ['The three horses in the courtyard (Fel Steeds and the Shadow Charger) come together and hit hard: crowd-control one, let a pet hold another (Mobalytics).',
+           'Baron Silverlaine\'s Veil of Shadow cuts healing on the tank by 75%: the healer should be ready (Mobalytics).',
+           'After Fenrus dies, his Voidwalkers are still in the room (Mobalytics).'],
+    guide: 'https://mobalytics.gg/wow-forever/profile/phaseshifter/dungeons/shadow-fang-keep-guide-bosses-loot-and-quests',
+  },
+
+  719: {
+    n: 'Blackfathom Deeps',
+    entrance: {area: 331, x: 13.8, y: 12.0, t: 'Ashenvale, far north-west on the Zoram Strand: a sunken temple in the water; the entrance cave (with the sapphires and the Tide Priestesses) is around 13.8, 12'},
+    level: 'Quests need level 17–21; the bosses are 26–28 (QuestieDB). Go at 23–26.',
+    summary: 'Seven Horde quests (Wowhead lists Baron Aquanis twice, hence 8 below), almost all through Je\'neu Sancrea at Zoram\'gar Outpost, a short swim south of the entrance. Two things happen in the entrance cave before the portal (the sapphires and the Damp Note), so the smooth route is: Je\'neu, the cave, back to Je\'neu, then the run. Blackfathom Villainy starts inside and ends in Thunder Bluff.',
+    stops: [
+      {title: 'Tsunaman', area: 406, x: 47.2, y: 64.2, where: 'Stonetalon Mountains, Sun Rock Retreat',
+       pick: [{q: 6562, t: 'Trouble in the Deeps: go and speak to Je\'neu Sancrea (needed for The Essence of Aku\'Mai)'}]},
+      {title: 'Je\'neu Sancrea', area: 331, x: 11.6, y: 34.2, where: 'Ashenvale, Zoram\'gar Outpost',
+       pick: [{q: 6563, t: 'The Essence of Aku\'Mai: 20 Sapphires of Aku\'Mai from the walls of the entrance cave'},
+              {q: 6921, t: 'Amongst the Ruins: the Fathom Core from the Moonshrine Ruins inside'}]},
+      {title: 'The entrance cave', area: 331, x: 13.8, y: 12.0, where: 'Ashenvale, the tunnels before the dungeon portal',
+       pick: [{q: 6564, t: 'Kill Blackfathom Tide Priestesses until one drops a Damp Note, which starts Allegiance to the Old Gods'}],
+       then: 'Pick the 20 sapphires here too, then swim back to Je\'neu: hand in the sapphires and the note; she gives step 2 of Allegiance (kill Lorgus Jett inside).'},
+    ],
+    chains: [
+      {name: 'Tsunaman → the sapphires', steps: [
+        {q: 6562, t: 'Speak to Je\'neu Sancrea at Zoram\'gar', area: 331},
+        {q: 6563, t: '20 Sapphires of Aku\'Mai from the entrance cave walls (outside the portal)', area: 331}]},
+      {name: 'Allegiance to the Old Gods', steps: [
+        {q: 6564, t: 'Damp Note from a Blackfathom Tide Priestess in the entrance cave; bring it to Je\'neu', area: 331},
+        {q: 6565, t: 'Kill Lorgus Jett', inside: true}]},
+    ],
+    inside: [
+      {q: 6561, t: 'Argent Guard Thaelrid, inside the dungeon, gives Blackfathom Villainy: Twilight Lord Kelris\'s head'},
+      {q: 6565, t: 'Lorgus Jett, a Twilight\'s Hammer leader: kill him'},
+      {q: 6921, t: 'The Fathom Stone in the Moonshrine Ruins gives the Fathom Core'},
+      {q: 6922, t: 'Baron Aquanis drops the Strange Water Globe, which starts Baron Aquanis (in Classic he appears when the Horde use the Fathom Stone)'},
+      {q: 6561, t: 'Twilight Lord Kelris, near the end: his head'},
+    ],
+    after: [
+      {title: 'Ashenvale, Zoram\'gar Outpost', area: 331, x: 11.6, y: 34.2, t: 'Je\'neu Sancrea: Allegiance to the Old Gods (step 2), Amongst the Ruins, Baron Aquanis'},
+      {title: 'Thunder Bluff', area: 1638, x: 70.6, y: 33.4, t: 'Bashana Runetotem: Blackfathom Villainy'},
+    ],
+    tips: ['Do the sapphires and the Damp Note on the way in: both are outside the portal, and the note unlocks the Lorgus Jett quest you do inside.',
+           'The Essence of Aku\'Mai is an ordinary quest on Forever (no dungeon XP bonus); the ones done inside give about 3.75x.'],
+    guide: '',
+  },
+
+  16919: {
+    n: 'The Hall of Thanes', side: 'alliance',
+    entrance: {area: 1537, x: 31.8, y: 46.4, t: 'New in Forever: inside Ironforge, beneath Old Ironforge, next to Thom Filch and below Afadra Dunwall'},
+    level: 'Quests need level 9–10; the dungeon is 13–17, about 15 is comfortable (Mobalytics). Go at 15.',
+    summary: 'Alliance only in practice: the entrance and three of the quest givers are inside Ironforge. Six quests: two by the entrance, a chain that starts with a map from Dark Iron dwarves in Dun Morogh, and two that start inside.',
+    stops: [
+      {title: 'Afadra Dunwall', area: 1537, x: 32.8, y: 48.2, where: 'Ironforge, above the dungeon entrance',
+       pick: [{q: 96394, t: 'The Restless Dead: 15 Enraged Apparitions, 10 Tormented Souls, and lay the spirit of Anvilmar to rest'}]},
+      {title: 'Thom Filch', area: 1537, x: 31.5, y: 45.6, where: 'Ironforge, in front of the dungeon entrance',
+       pick: [{q: 96403, t: 'Important Heirlooms: 8 Dwarven Heirlooms'}]},
+      {title: 'Ironband\'s Compound, then Earthseer Farsen', area: 1, x: 64.8, y: 58.4, where: 'Dun Morogh: the Dark Iron dwarves at Ironband\'s Compound (77.8, 61.0, Mobalytics), then Farsen on the hillside',
+       pick: [{q: 96391, n: 'Underground Map', t: 'Underground Map: a Dark Iron dwarf drops the Dark Iron Map; bring it to Earthseer Farsen'},
+              {q: 96393, t: 'Old Ironforge Incursion: Durgen Dirgehammer\'s head'}]},
+    ],
+    chains: [
+      {name: 'The Dark Iron map', steps: [
+        {q: 96391, n: 'Underground Map', t: 'Dark Iron Map from the Dark Iron dwarves at Ironband\'s Compound, to Earthseer Farsen', area: 1},
+        {q: 96393, t: 'Kill Durgen Dirgehammer in the lower vaults, take his head to King Magni', inside: true}]},
+    ],
+    inside: [
+      {q: 96394, t: '15 Enraged Apparitions and 10 Tormented Souls, and the spirit of Anvilmar'},
+      {q: 96403, t: '8 Dwarven Heirlooms'},
+      {q: 96395, t: 'The Ghostly Attendant in the west wing gives An Ancient Grudge: put Faldrim Anvilmar to rest (he patrols his tomb in the big central room)'},
+      {q: 96393, t: 'Durgen Dirgehammer, the last boss: his head'},
+      {q: 98423, t: 'Behind one of the doors in the final boss room: a stone tablet, the Treaty of Understanding'},
+    ],
+    after: [
+      {title: 'Ironforge, by the entrance', area: 1537, x: 32.8, y: 48.2, t: 'Afadra Dunwall (The Restless Dead), Thom Filch (Important Heirlooms)'},
+      {title: 'Ironforge, the throne room', area: 1537, x: 39.5, y: 55.6, t: 'King Magni Bronzebeard: Old Ironforge Incursion and The Treaty of Understanding'},
+    ],
+    tips: ['Faldrim Anvilmar\'s curse turns you to stone and slows you: keep him on the tank (Mobalytics).',
+           'Horde: there is nothing practical here for you; Ragefire Chasm and the Ruins of Lordaeron cover the same levels.'],
+    guide: 'https://mobalytics.gg/wow-forever/dungeons/the-hall-of-thanes-dungeon-guide',
+  },
 };
