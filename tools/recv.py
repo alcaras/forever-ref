@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tiny receiver: the browser hands Wowhead listview data to this and it lands in cache/wowhead/<name>.json.
 
-Usage: python tools/recv.py [port]
+Usage: python tools/recv.py [port] [out dir, default cache/wowhead]
 
 Wowhead pages carry `upgrade-insecure-requests`, so fetch()/sendBeacon to http://localhost fail there.
 A top-level navigation is not upgraded, so the page does:
@@ -12,9 +12,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, 'cache', 'wowhead')
-os.makedirs(OUT, exist_ok=True)
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8790
+OUT = os.path.join(ROOT, sys.argv[2]) if len(sys.argv) > 2 else os.path.join(ROOT, 'cache', 'wowhead')
+os.makedirs(OUT, exist_ok=True)
 
 
 def save(name, body):
