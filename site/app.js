@@ -1065,7 +1065,7 @@ function pageDungeons() {
     const qs = d.quests.filter(q => questSideOk(q, st.side));
     const lv = qs.map(q => q.lv).filter(Boolean);
     const p = dungeonPackage(d, st.side);
-    return `<tr><td><a href="#/dungeon/${d.zone}">${esc(d.n)}</a>${PREP[d.zone] ? ` <a class="badge new" href="#/prep/${d.zone}" title="Step-by-step: which quests to pick up where">PREP GUIDE</a>` : ''}${d.nodata ? ' <span class="muted small">no quest data on Wowhead yet</span>' : ''}</td>
+    return `<tr><td><a href="#/dungeon/${d.zone}">${esc(d.n)}</a>${PREP[d.zone] ? ` <a class="badge new" href="#/dungeon/${d.zone}" title="Step-by-step: which quests to pick up where">GUIDE</a>` : ''}${d.nodata ? ' <span class="muted small">no quest data on Wowhead yet</span>' : ''}</td>
       <td class="num">${qs.length}</td><td class="num">${lv.length ? Math.min(...lv) + '–' + Math.max(...lv) : ''}</td><td class="num"><b>${p.ready || ''}</b></td><td class="num">${p.pre.length || ''}</td>
       <td class="small">${[...new Set(qs.map(q => q.n))].slice(0, 4).map(esc).join(', ')}${new Set(qs.map(q => q.n)).size > 4 ? ', …' : ''}</td></tr>`;
   };
@@ -1111,9 +1111,11 @@ function pageDungeon(zone, params) {
   }).concat(collected);
   const qs = withCollected.filter(q => questSideOk(q, st.side) && (!st.q || q.n.toLowerCase().includes(st.q.toLowerCase())));
   const mapId = Object.keys(MAPS).find(id => MAPS[id].n === d.n || MAPS[id].area === d.zone);
-  let h = `<h1>${esc(d.n)}</h1><p class="muted">${d.kind === 'raid' ? 'Raid' : 'Dungeon'} &nbsp; <a class="ext" href="${WH}zone=${d.zone}#quests" target="_blank">Wowhead Forever ↗</a>${d.guide ? ` &nbsp; <a class="ext" href="${esc(d.guide)}" target="_blank">Mobalytics guide ↗</a>` : ''}${mapId ? ` &nbsp; <a href="#/map/${mapId}">map</a>` : ''}</p>${PREP[d.zone] ? `<p class="prep-callout"><a href="#/prep/${d.zone}"><b>Quests to pick up before you go →</b></a> <span class="muted small">a step-by-step route: who gives what, where, the chains, what to do inside</span></p>` : ''}  <div class="filters">${sideFilter(st.side)}<input id="dq-q" placeholder="Filter quests" value="${esc(st.q)}"><span class="muted small">${qs.length} quests</span></div>`;
-  if (d.nodata && !qs.length) return h + '<p class="muted">Wowhead has no quest list for this instance yet.</p>' + questieDungeonSections(d);
-  if (!qs.length) return h + '<p class="muted">No quests for this faction.</p>' + questieDungeonSections(d);
+  const guide = !!PREP[d.zone];
+  const close = x => guide ? x + '</details>' : x;
+  let h = `<h1>${esc(d.n)}</h1><p class="muted">${d.kind === 'raid' ? 'Raid' : 'Dungeon'} &nbsp; <a class="ext" href="${WH}zone=${d.zone}#quests" target="_blank">Wowhead Forever ↗</a>${d.guide ? ` &nbsp; <a class="ext" href="${esc(d.guide)}" target="_blank">Mobalytics guide ↗</a>` : ''}${mapId ? ` &nbsp; <a href="#/map/${mapId}">map</a>` : ''}</p>${guide ? prepGuide(d.zone) + `<details class="dq-details"${st.open || st.hl || st.q ? ' open' : ''}><summary><h2>Details <span class="muted small">every quest with its rewards and chain, both factions, what to hold before the run, the NPCs inside</span></h2></summary>` : ''}  <div class="filters">${sideFilter(st.side)}<input id="dq-q" placeholder="Filter quests" value="${esc(st.q)}"><span class="muted small">${qs.length} quests</span></div>`;
+  if (d.nodata && !qs.length) return close(h + '<p class="muted">Wowhead has no quest list for this instance yet.</p>' + questieDungeonSections(d));
+  if (!qs.length) return close(h + '<p class="muted">No quests for this faction.</p>' + questieDungeonSections(d));
   const hl = +(st.hl || 0);
   /* Same name + level + faction, different ids: per-class/race variants of one quest. Show one row, list the variants. */
   const groups = new Map();
@@ -1154,7 +1156,7 @@ function pageDungeon(zone, params) {
     <td class="small">${giver(q)}${vars.map(v => giver(v) ? `<div class="muted">#${v.id}: ${giver(v)}</div>` : '').join('')}</td>
     <td class="small">${questChain(q, d.zone)}</td>
     <td>${questRewards(q)}</td><td class="small">${questRep(q)}</td><td class="small chg">${(q.chg || []).map(esc).join('<br>')}</td></tr>`).join('');
-  return h + '</tbody></table>' + prepSection(d, st.side) + questieDungeonSections(d);
+  return close(h + '</tbody></table>' + prepSection(d, st.side) + questieDungeonSections(d));
 }
 /* ---------------------------------------------------------------- dungeon quest prep guides (guides/prep.js, hand-written, Horde) */
 const PREP = window.FR_PREP || {};
@@ -1182,17 +1184,15 @@ function prepQuestLine(id, text, step) {
   const rew = p.w && (p.w.rew || p.w.choice) ? `<div class="prep-rew">${questRewards(p.w).replace(/<br>/g, ' ')}</div>` : '';
   return `<li>${step ? `<span class="prep-stepno">step ${step}</span> ` : ''}<a href="${p.link}"${p.ext ? ' target="_blank" class="ext"' : ''}><b>${esc(p.n)}</b></a>${bits ? ` <span class="muted small">${bits}</span>` : ''}<div class="small">${esc(text || '')}</div>${rew}</li>`;
 }
-function pagePrep(zone) {
+function prepGuide(zone) {
   const g = PREP[zone];
   const d = QUESTS.dungeons.find(x => x.zone === +zone);
-  if (!g) return `<h1>No prep guide yet</h1><p class="muted">Guides exist for ${Object.entries(PREP).map(([z, x]) => `<a href="#/prep/${z}">${esc(x.n)}</a>`).join(', ')}.</p>`;
+  if (!g) return '';
   const place = (area, x, y) => `${esc(ZONE_NAME[area] || '')}${x != null ? ` <span class="muted">${x}, ${y}</span>` : ''}`;
   /* the dungeon's Horde quests and their total XP, for the summary */
   const horde = d ? d.quests.filter(q => questSideOk(q, 'horde') && q.xp) : [];
   const total = horde.reduce((s, q) => s + fxp(q), 0);
-  let h = `<p class="muted small"><a href="#/dungeons">Dungeon quests</a> › <a href="#/dungeon/${zone}">${esc(g.n)}</a> › prep guide</p>
-  <h1>${esc(g.n)}: quests to pick up</h1>
-  <p class="muted">Horde. Where to pick up each quest, in a sensible order, what to do inside, and where to hand them in.</p>
+  let h = `<p class="muted">Quest guide, Horde: where to pick up each quest, in a sensible order, what to do inside, and where to hand them in. Everything else is under Details at the bottom.</p>
   <div class="prep-summary"><p>${esc(g.summary)}</p>
     <div class="tiles"><div class="tile"><div><b>${esc(g.level.split('. ').pop().replace(/\.$/, ''))}</b><div class="sub">${esc(g.level.split('. ').slice(0, -1).join('. '))}</div></div></div>
     <div class="tile"><div><b>${horde.length}</b><div class="sub">Horde quests with XP in this dungeon</div></div></div>
@@ -1240,12 +1240,13 @@ function pagePrep(zone) {
   /* 3: turn in */
   h += `<h2><span class="prep-num">3</span> Hand them in</h2><ol class="prep-stops">${g.after.map(a => `<li class="prep-stop"><div class="prep-stop-text"><b>${esc(a.title)}</b> <span class="muted small">${place(a.area, a.x, a.y)}</span><div class="small">${esc(a.t)}</div></div>${prepMap(a.area, [[a.x, a.y]], 200)}</li>`).join('')}</ol>`;
   if (g.tips && g.tips.length) h += `<h2>Tips</h2><ul>${g.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul>`;
-  h += `<p class="muted small" style="margin-top:20px">Sources: Wowhead Forever quest and NPC pages (starters, objectives, chains, coordinates), QuestieDB (prerequisites, drops), <a class="ext" href="${esc(g.guide)}" target="_blank">the Mobalytics guide</a> (tips, in-dungeon spots); researched 2026-09-26. The <a href="#/dungeon/${zone}">full quest table</a> lists every quest with rewards.</p>`;
+  h += `<p class="muted small" style="margin-top:20px">Sources: Wowhead Forever quest and NPC pages (starters, objectives, chains, coordinates), QuestieDB (prerequisites, drops), <a class="ext" href="${esc(g.guide)}" target="_blank">the Mobalytics guide</a> (tips, in-dungeon spots); researched 2026-09-26. Details, below, lists every quest with its rewards, both factions.</p>`;
   return h;
 }
 
 function bindDungeon() {
   const st = STATE.dq;
+  const det = document.querySelector('.dq-details'); if (det) det.addEventListener('toggle', () => { st.open = det.open; });
   document.querySelectorAll('a[data-side]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); st.side = a.dataset.side; render(); }));
   const q = $('#dq-q'); if (q) q.addEventListener('input', () => { st.q = q.value; rerenderKeepFocus('#dq-q'); });
 }
@@ -1536,6 +1537,7 @@ let lastPath = '';
 function render() {
   const {parts, params} = parseHash();
   const [p, id] = parts;
+  if (p === 'prep') { location.replace('#/dungeon/' + id); return; }   /* the guide lives on the dungeon page now */
   const path = parts.join('/');
   if (p === 'items' && params.flag && path !== lastPath) { STATE.items = {q: '', c: '', sc: '', qmin: '', lmin: '', lmax: '', flag: params.flag}; }
   if (p === 'profession' && path !== lastPath) { STATE.prof = {q: '', skill: STATE.prof.skill, flag: params.new ? 'new' : '', hideGrey: false, view: params.view || STATE.prof.view || 'recipes', bop: true, slot: '', lmax: ''}; }
@@ -1563,7 +1565,6 @@ function render() {
     case 'quest': html = pageQuest(id); break;
     case 'npc': html = pageNpc(id); break;
     case 'dungeon': html = pageDungeon(id, params); break;
-    case 'prep': html = pagePrep(id); break;
     case 'maps': html = pageMaps(); break;
     case 'map': html = pageMap(id); break;
     default: html = '<h1>Not found</h1>';

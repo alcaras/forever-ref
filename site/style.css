@@ -176,3 +176,9 @@ tr.bop-no td { opacity: .45; }
 .bop-lv a { padding: 2px 8px; }
 .bop-pick { padding: 14px; border: 1px dashed var(--line); border-radius: 8px; text-align: center; }
 .bop-model { margin-top: 18px; }
+.dq-details { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 6px; }
+.dq-details > summary { list-style: none; cursor: pointer; }
+.dq-details > summary::-webkit-details-marker { display: none; }
+.dq-details > summary h2 { display: inline; }
+.dq-details > summary h2::before { content: '▸ '; color: var(--gold); }
+.dq-details[open] > summary h2::before { content: '▾ '; }
