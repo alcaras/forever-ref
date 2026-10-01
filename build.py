@@ -13,7 +13,7 @@ are diffed into site/data/patches.js (the "Patches" page).
 import csv, json, os, re, sys, math, gzip, datetime, urllib.request, collections
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_BUILD = '1.60.1.69913'  # WoW Forever (wago.tools product wow_classic_beta)
+DEFAULT_BUILD = '1.60.1.70124'  # WoW Forever (wago.tools product wow_classic_beta)
 ERA_BUILD = '1.15.9.69722'      # Classic Era, used only for the "what changed" diff
 PRODUCT = 'wow_classic_beta'
 CACHE = os.path.join(ROOT, 'cache')
