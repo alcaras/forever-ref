@@ -149,6 +149,9 @@ T['TradeSkillCategory'] = fetch('TradeSkillCategory', need=('Name_lang', 'Parent
 T['ChrClasses'] = fetch('ChrClasses', need=('Name_lang', 'ID'))
 T['AreaTable'] = fetch('AreaTable', need=('AreaName_lang', 'ContinentID', 'ParentAreaID', 'ExplorationLevel'))
 T['Map'] = fetch('Map', need=('MapName_lang', 'InstanceType'))
+T['ContentTuning'] = fetch('ContentTuning', need=('MinLevelSquish', 'MaxLevelSquish', 'LfgMinLevel'))
+T['MapDifficulty'] = fetch('MapDifficulty', need=('MapID', 'DifficultyID', 'ContentTuningID'))
+T['LFGDungeons'] = fetch('LFGDungeons', need=('Name_lang', 'ContentTuningID'))
 T['ManifestInterfaceData'] = fetch('ManifestInterfaceData', need=('FilePath', 'FileName'))
 T['ItemLimitCategory'] = fetch('ItemLimitCategory', need=('Name_lang', 'Quantity'))
 T['Faction'] = fetch('Faction', need=('Name_lang',))
@@ -837,10 +840,39 @@ general_out.sort(key=lambda l: l['n'])
 
 # ---------------------------------------------------------------- zones
 MAPS = {I(r['ID']): r for r in T['Map']}
+# Instance level: Forever keeps it in ContentTuning (Era had LFGDungeons.MinLevel). Look it up on the area itself,
+# then on its instance map's MapDifficulty (the map it lies on, or the map naming it as its area), then on the LFGDungeons row of the same name (raids only have that).
+# MinLevelSquish matches the lowest mob level inside; LfgMinLevel, when set, is the group finder's entry level.
+CT = by_id(T['ContentTuning'])
+MAP_CT = {}
+for r in sorted(T['MapDifficulty'], key=lambda r: I(r['DifficultyID']) != 1):   # normal difficulty first
+    if I(r['ContentTuningID']) in CT:
+        MAP_CT.setdefault(I(r['MapID']), I(r['ContentTuningID']))
+LFG_ALIAS = {"Onyxia's Lair": 'Onyxia'}
+LFG_CT = {r['Name_lang']: I(r['ContentTuningID']) for r in T['LFGDungeons'] if I(r['ContentTuningID']) in CT}
+
+
+AREA_MAP = {I(m['AreaTableID']): mid for mid, m in MAPS.items() if I(m['AreaTableID']) and I(m['InstanceType']) in (1, 2)}
+
+
+def area_level(r):
+    mid = I(r['ContinentID']) if I(MAPS.get(I(r['ContinentID']), {}).get('InstanceType')) in (1, 2) else AREA_MAP.get(I(r['ID']), 0)
+    m = MAPS.get(mid, {})
+    names = [r['AreaName_lang'], m.get('MapName_lang', '')]
+    ct = (I(r['ContentTuningID']) if I(r['ContentTuningID']) in CT else 0) or \
+        MAP_CT.get(mid, 0) or \
+        next((LFG_CT[n] for n in names + [LFG_ALIAS.get(n) for n in names] if n in LFG_CT), 0)
+    c = CT.get(ct)
+    if not c or not I(c['MinLevelSquish']):
+        return {}
+    lo, hi, lfg = I(c['MinLevelSquish']), I(c['MaxLevelSquish']), I(c['LfgMinLevel'])
+    return {'dl': [lo, hi] if hi > lo else lo, **({'lfg': lfg} if lfg else {})}
+
+
 zones = []
 for r in T['AreaTable']:
     zones.append({'id': I(r['ID']), 'n': r['AreaName_lang'], 'm': I(r['ContinentID']), 'p': I(r['ParentAreaID']),
-                  'lv': I(r['ExplorationLevel'])})
+                  'lv': I(r['ExplorationLevel']), **area_level(r)})
 maps_out = {mid: {'n': m['MapName_lang'], 't': I(m['InstanceType'])} for mid, m in MAPS.items()}
 
 # ---------------------------------------------------------------- meta

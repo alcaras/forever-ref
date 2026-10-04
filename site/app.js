@@ -1065,15 +1065,17 @@ function pageDungeons() {
     const qs = d.quests.filter(q => questSideOk(q, st.side));
     const lv = qs.map(q => q.lv).filter(Boolean);
     const p = dungeonPackage(d, st.side);
+    const dl = dungeonLevel(d), mob = dungeonMobLevels(d);
     return `<tr><td><a href="#/dungeon/${d.zone}">${esc(d.n)}</a>${PREP[d.zone] ? ` <a class="badge new" href="#/dungeon/${d.zone}" title="Step-by-step: which quests to pick up where">GUIDE</a>` : ''}${d.nodata ? ' <span class="muted small">no quest data on Wowhead yet</span>' : ''}</td>
+      <td class="num"><b>${fmtLv(dl.dl)}</b>${dl.lfg ? ` <span class="muted small" title="group finder entry level">LFG ${dl.lfg}</span>` : ''}</td><td class="num">${mob ? fmtLv(mob) : ''}</td>
       <td class="num">${qs.length}</td><td class="num">${lv.length ? Math.min(...lv) + '–' + Math.max(...lv) : ''}</td><td class="num"><b>${p.ready || ''}</b></td><td class="num">${p.pre.length || ''}</td>
       <td class="small">${[...new Set(qs.map(q => q.n))].slice(0, 4).map(esc).join(', ')}${new Set(qs.map(q => q.n)).size > 4 ? ', …' : ''}</td></tr>`;
   };
-  /* sort by the instance's quest levels: median of the faction-filtered quest levels, no-data instances last */
-  const key = d => { const lv = d.quests.filter(q => questSideOk(q, st.side)).map(q => q.lv).filter(Boolean).sort((a, b) => a - b); return lv.length ? lv[Math.floor(lv.length / 2)] : 999; };
-  const sec = (title, kind) => `<h2>${title}</h2><table><thead><tr><th>Instance</th><th>Quests</th><th>Levels</th><th title="Earliest level at which the group can hold every quest, prerequisites included">Ready at</th><th>Prereqs</th><th>Examples</th></tr></thead><tbody>${QUESTS.dungeons.filter(d => d.kind === kind).sort((a, b) => key(a) - key(b) || a.n.localeCompare(b.n)).map(row).join('')}</tbody></table>`;
+  /* sort by the instance level (client, else the lowest mob level), else the median of the faction-filtered quest levels; no-data instances last */
+  const key = d => { const dl = dungeonLevel(d).dl, mob = dungeonMobLevels(d); if (dl || mob) return [].concat(dl || mob)[0]; const lv = d.quests.filter(q => questSideOk(q, st.side)).map(q => q.lv).filter(Boolean).sort((a, b) => a - b); return lv.length ? lv[Math.floor(lv.length / 2)] : 999; };
+  const sec = (title, kind) => `<h2>${title}</h2><table><thead><tr><th>Instance</th><th title="Instance level from the game client (ContentTuning); matches the lowest mob level inside">Level</th><th title="Mob levels inside, from QuestieDB">Mobs</th><th>Quests</th><th>Quest levels</th><th title="Earliest level at which the group can hold every quest, prerequisites included">Ready at</th><th>Prereqs</th><th>Examples</th></tr></thead><tbody>${QUESTS.dungeons.filter(d => d.kind === kind).sort((a, b) => key(a) - key(b) || a.n.localeCompare(b.n)).map(row).join('')}</tbody></table>`;
   return `<h1>Dungeon quests</h1>
-  <p class="muted">Quests are server-side, so this comes from Wowhead's Forever database (harvested ${esc(QUESTS.harvested || '')}), not the client. Rewards link into this site's item data.</p>
+  <p class="muted">Quests are server-side, so this comes from Wowhead's Forever database (harvested ${esc(QUESTS.harvested || '')}), not the client. Rewards link into this site's item data. <b>Level</b> is the instance level from the client's ContentTuning table (Forever moved it there from LFGDungeons); it matches the lowest mob level inside. <b>Mobs</b> are the mob levels inside from QuestieDB.</p>
   <div class="filters">${sideFilter(st.side)}</div>
   ${sec('Dungeons', 'dungeon')}${sec('Raids', 'raid')}`;
 }
@@ -1113,7 +1115,8 @@ function pageDungeon(zone, params) {
   const mapId = Object.keys(MAPS).find(id => MAPS[id].n === d.n || MAPS[id].area === d.zone);
   const guide = !!PREP[d.zone];
   const close = x => guide ? x + '</details>' : x;
-  let h = `<h1>${esc(d.n)}</h1><p class="muted">${d.kind === 'raid' ? 'Raid' : 'Dungeon'} &nbsp; <a class="ext" href="${WH}zone=${d.zone}#quests" target="_blank">Wowhead Forever ↗</a>${d.guide ? ` &nbsp; <a class="ext" href="${esc(d.guide)}" target="_blank">Mobalytics guide ↗</a>` : ''}${mapId ? ` &nbsp; <a href="#/map/${mapId}">map</a>` : ''}</p>${guide ? prepGuide(d.zone) + `<details class="dq-details"${st.open || st.hl || st.q ? ' open' : ''}><summary><h2>Details <span class="muted small">every quest with its rewards and chain, both factions, what to hold before the run, the NPCs inside</span></h2></summary>` : ''}  <div class="filters">${sideFilter(st.side)}<input id="dq-q" placeholder="Filter quests" value="${esc(st.q)}"><span class="muted small">${qs.length} quests</span></div>`;
+  const dl = dungeonLevel(d), mob = dungeonMobLevels(d);
+  let h = `<h1>${esc(d.n)}</h1><p class="muted">${d.kind === 'raid' ? 'Raid' : 'Dungeon'}${dl.dl ? ` &nbsp; <span title="instance level from the game client (ContentTuning)">level <b>${fmtLv(dl.dl)}</b></span>` : ''}${dl.lfg ? ` <span title="group finder entry level">(group finder from ${dl.lfg})</span>` : ''}${mob ? ` &nbsp; <span title="mob levels inside, from QuestieDB">mobs ${fmtLv(mob)}</span>` : ''} &nbsp; <a class="ext" href="${WH}zone=${d.zone}#quests" target="_blank">Wowhead Forever ↗</a>${d.guide ? ` &nbsp; <a class="ext" href="${esc(d.guide)}" target="_blank">Mobalytics guide ↗</a>` : ''}${mapId ? ` &nbsp; <a href="#/map/${mapId}">map</a>` : ''}</p>${guide ? prepGuide(d.zone) + `<details class="dq-details"${st.open || st.hl || st.q ? ' open' : ''}><summary><h2>Details <span class="muted small">every quest with its rewards and chain, both factions, what to hold before the run, the NPCs inside</span></h2></summary>` : ''}  <div class="filters">${sideFilter(st.side)}<input id="dq-q" placeholder="Filter quests" value="${esc(st.q)}"><span class="muted small">${qs.length} quests</span></div>`;
   if (d.nodata && !qs.length) return close(h + '<p class="muted">Wowhead has no quest list for this instance yet.</p>' + questieDungeonSections(d));
   if (!qs.length) return close(h + '<p class="muted">No quests for this faction.</p>' + questieDungeonSections(d));
   const hl = +(st.hl || 0);
@@ -1421,6 +1424,19 @@ function questieItemSections(id) {
 }
 const DUNGEON_ZONE_ALIASES = {1584: [1584, 1585]};   /* QuestieDB keys Blackrock Depths NPCs on 1585 */
 function dungeonZones(zone) { return DUNGEON_ZONE_ALIASES[zone] || [zone]; }
+/* instance level from the client: build.py's ContentTuning lookup ('dl' = level or [min, max], 'lfg' = group finder entry level) */
+function dungeonLevel(d) { const z = ZONES.zones.find(x => x.id === d.zone) || {}; return {dl: z.dl, lfg: z.lfg}; }
+function fmtLv(lv) { return Array.isArray(lv) ? (lv[0] === lv[1] ? '' + lv[0] : lv[0] + '–' + lv[1]) : lv ? '' + lv : ''; }
+/* hostile mob levels inside, from QuestieDB: [min, max] or null; one pass over the NPCs, cached */
+let MOB_LV = null;
+function dungeonMobLevels(d) {
+  if (!MOB_LV) {
+    MOB_LV = {};
+    Object.values(QDB.npcs).forEach(n => { if (!n.lmin || n.friendly) return; const r = MOB_LV[n.zone] || (MOB_LV[n.zone] = [n.lmin, n.lmax || n.lmin]); r[0] = Math.min(r[0], n.lmin); r[1] = Math.max(r[1], n.lmax || n.lmin); });
+  }
+  const rs = dungeonZones(d.zone).map(z => MOB_LV[z]).filter(Boolean);
+  return rs.length ? [Math.min(...rs.map(r => r[0])), Math.max(...rs.map(r => r[1]))] : null;
+}
 function questieDungeonSections(d) {
   const zones = dungeonZones(d.zone);
   const npcs = Object.keys(QDB.npcs).filter(id => zones.includes(QDB.npcs[id].zone)).map(id => [id, QDB.npcs[id]]).sort((a, b) => (b[1].rank || 0) - (a[1].rank || 0) || (b[1].lmax || 0) - (a[1].lmax || 0) || a[1].n.localeCompare(b[1].n));
@@ -1468,8 +1484,7 @@ function prepSection(d, side) {
   const p = dungeonPackage(d, side);
   if (!p.pkg.length) return '';
   const qname = id => { const q = p.pkg.find(x => x.id === id); return q ? esc(q.n) : '#' + id; };
-  const mobs = Object.values(QDB.npcs).filter(n => dungeonZones(d.zone).includes(n.zone) && n.lmin && !n.friendly);
-  const mobLv = mobs.length ? `${Math.min(...mobs.map(n => n.lmin))}–${Math.max(...mobs.map(n => n.lmax || n.lmin))}` : '';
+  const mob = dungeonMobLevels(d), mobLv = mob ? fmtLv(mob) : '';
   let h = `<h2>Prep <span class="muted small">run once, as soon as the group can hold every quest</span></h2>
   <div class="tiles"><div class="tile"><div><b>${p.ready}</b><div class="sub">ready at level: every quest and prerequisite obtainable</div></div></div><div class="tile"><div><b>${p.gate}</b><div class="sub">highest required level among the dungeon's ${p.pkg.length} quests</div></div></div><div class="tile"><div><b>${p.pre.length}</b><div class="sub">prerequisite quests to finish first</div></div></div>${mobLv ? `<div class="tile"><div><b>${mobLv}</b><div class="sub">mob levels inside (QuestieDB)</div></div></div>` : ''}</div>`;
   if (p.pre.length) {
