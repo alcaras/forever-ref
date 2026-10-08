@@ -149,7 +149,7 @@ T['TradeSkillCategory'] = fetch('TradeSkillCategory', need=('Name_lang', 'Parent
 T['ChrClasses'] = fetch('ChrClasses', need=('Name_lang', 'ID'))
 T['AreaTable'] = fetch('AreaTable', need=('AreaName_lang', 'ContinentID', 'ParentAreaID', 'ExplorationLevel'))
 T['Map'] = fetch('Map', need=('MapName_lang', 'InstanceType'))
-T['ContentTuning'] = fetch('ContentTuning', need=('MinLevelSquish', 'MaxLevelSquish', 'LfgMinLevel'))
+T['ContentTuning'] = fetch('ContentTuning', need=('MinLevelSquish', 'MaxLevelSquish'))
 T['MapDifficulty'] = fetch('MapDifficulty', need=('MapID', 'DifficultyID', 'ContentTuningID'))
 T['LFGDungeons'] = fetch('LFGDungeons', need=('Name_lang', 'ContentTuningID'))
 T['ManifestInterfaceData'] = fetch('ManifestInterfaceData', need=('FilePath', 'FileName'))
@@ -842,7 +842,8 @@ general_out.sort(key=lambda l: l['n'])
 MAPS = {I(r['ID']): r for r in T['Map']}
 # Instance level: Forever keeps it in ContentTuning (Era had LFGDungeons.MinLevel). Look it up on the area itself,
 # then on its instance map's MapDifficulty (the map it lies on, or the map naming it as its area), then on the LFGDungeons row of the same name (raids only have that).
-# MinLevelSquish matches the lowest mob level inside; LfgMinLevel, when set, is the group finder's entry level.
+# MinLevelSquish matches the lowest mob level inside. LfgMinLevel is not shown: Ruins of Lordaeron (15-20) has 27 there,
+# so it is not the entry level.
 CT = by_id(T['ContentTuning'])
 MAP_CT = {}
 for r in sorted(T['MapDifficulty'], key=lambda r: I(r['DifficultyID']) != 1):   # normal difficulty first
@@ -865,8 +866,8 @@ def area_level(r):
     c = CT.get(ct)
     if not c or not I(c['MinLevelSquish']):
         return {}
-    lo, hi, lfg = I(c['MinLevelSquish']), I(c['MaxLevelSquish']), I(c['LfgMinLevel'])
-    return {'dl': [lo, hi] if hi > lo else lo, **({'lfg': lfg} if lfg else {})}
+    lo, hi = I(c['MinLevelSquish']), I(c['MaxLevelSquish'])
+    return {'dl': [lo, hi] if hi > lo else lo}
 
 
 zones = []

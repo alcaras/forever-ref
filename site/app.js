@@ -1067,7 +1067,7 @@ function pageDungeons() {
     const p = dungeonPackage(d, st.side);
     const dl = dungeonLevel(d), mob = dungeonMobLevels(d);
     return `<tr><td><a href="#/dungeon/${d.zone}">${esc(d.n)}</a>${PREP[d.zone] ? ` <a class="badge new" href="#/dungeon/${d.zone}" title="Step-by-step: which quests to pick up where">GUIDE</a>` : ''}${d.nodata ? ' <span class="muted small">no quest data on Wowhead yet</span>' : ''}</td>
-      <td class="num"><b>${fmtLv(dl.dl)}</b>${dl.lfg ? ` <span class="muted small" title="group finder entry level">LFG ${dl.lfg}</span>` : ''}</td><td class="num">${mob ? fmtLv(mob) : ''}</td>
+      <td class="num"><b>${fmtLv(dl.dl)}</b></td><td class="num">${mob ? fmtLv(mob) : ''}</td>
       <td class="num">${qs.length}</td><td class="num">${lv.length ? Math.min(...lv) + '–' + Math.max(...lv) : ''}</td><td class="num"><b>${p.ready || ''}</b></td><td class="num">${p.pre.length || ''}</td>
       <td class="small">${[...new Set(qs.map(q => q.n))].slice(0, 4).map(esc).join(', ')}${new Set(qs.map(q => q.n)).size > 4 ? ', …' : ''}</td></tr>`;
   };
@@ -1116,7 +1116,7 @@ function pageDungeon(zone, params) {
   const guide = !!PREP[d.zone];
   const close = x => guide ? x + '</details>' : x;
   const dl = dungeonLevel(d), mob = dungeonMobLevels(d);
-  let h = `<h1>${esc(d.n)}</h1><p class="muted">${d.kind === 'raid' ? 'Raid' : 'Dungeon'}${dl.dl ? ` &nbsp; <span title="instance level from the game client (ContentTuning)">level <b>${fmtLv(dl.dl)}</b></span>` : ''}${dl.lfg ? ` <span title="group finder entry level">(group finder from ${dl.lfg})</span>` : ''}${mob ? ` &nbsp; <span title="mob levels inside, from QuestieDB">mobs ${fmtLv(mob)}</span>` : ''} &nbsp; <a class="ext" href="${WH}zone=${d.zone}#quests" target="_blank">Wowhead Forever ↗</a>${d.guide ? ` &nbsp; <a class="ext" href="${esc(d.guide)}" target="_blank">Mobalytics guide ↗</a>` : ''}${mapId ? ` &nbsp; <a href="#/map/${mapId}">map</a>` : ''}</p>${guide ? prepGuide(d.zone) + `<details class="dq-details"${st.open || st.hl || st.q ? ' open' : ''}><summary><h2>Details <span class="muted small">every quest with its rewards and chain, both factions, what to hold before the run, the NPCs inside</span></h2></summary>` : ''}  <div class="filters">${sideFilter(st.side)}<input id="dq-q" placeholder="Filter quests" value="${esc(st.q)}"><span class="muted small">${qs.length} quests</span></div>`;
+  let h = `<h1>${esc(d.n)}</h1><p class="muted">${d.kind === 'raid' ? 'Raid' : 'Dungeon'}${dl.dl ? ` &nbsp; <span title="instance level from the game client (ContentTuning)">level <b>${fmtLv(dl.dl)}</b></span>` : ''}${mob ? ` &nbsp; <span title="mob levels inside, from QuestieDB">mobs ${fmtLv(mob)}</span>` : ''} &nbsp; <a class="ext" href="${WH}zone=${d.zone}#quests" target="_blank">Wowhead Forever ↗</a>${d.guide ? ` &nbsp; <a class="ext" href="${esc(d.guide)}" target="_blank">Mobalytics guide ↗</a>` : ''}${mapId ? ` &nbsp; <a href="#/map/${mapId}">map</a>` : ''}</p>${guide ? prepGuide(d.zone) + `<details class="dq-details"${st.open || st.hl || st.q ? ' open' : ''}><summary><h2>Details <span class="muted small">every quest with its rewards and chain, both factions, what to hold before the run, the NPCs inside</span></h2></summary>` : ''}  <div class="filters">${sideFilter(st.side)}<input id="dq-q" placeholder="Filter quests" value="${esc(st.q)}"><span class="muted small">${qs.length} quests</span></div>`;
   if (d.nodata && !qs.length) return close(h + '<p class="muted">Wowhead has no quest list for this instance yet.</p>' + questieDungeonSections(d));
   if (!qs.length) return close(h + '<p class="muted">No quests for this faction.</p>' + questieDungeonSections(d));
   const hl = +(st.hl || 0);
@@ -1424,8 +1424,8 @@ function questieItemSections(id) {
 }
 const DUNGEON_ZONE_ALIASES = {1584: [1584, 1585]};   /* QuestieDB keys Blackrock Depths NPCs on 1585 */
 function dungeonZones(zone) { return DUNGEON_ZONE_ALIASES[zone] || [zone]; }
-/* instance level from the client: build.py's ContentTuning lookup ('dl' = level or [min, max], 'lfg' = group finder entry level) */
-function dungeonLevel(d) { const z = ZONES.zones.find(x => x.id === d.zone) || {}; return {dl: z.dl, lfg: z.lfg}; }
+/* instance level from the client: build.py's ContentTuning lookup ('dl' = level or [min, max]) */
+function dungeonLevel(d) { const z = ZONES.zones.find(x => x.id === d.zone) || {}; return {dl: z.dl}; }
 function fmtLv(lv) { return Array.isArray(lv) ? (lv[0] === lv[1] ? '' + lv[0] : lv[0] + '–' + lv[1]) : lv ? '' + lv : ''; }
 /* hostile mob levels inside, from QuestieDB: [min, max] or null; one pass over the NPCs, cached */
 let MOB_LV = null;
